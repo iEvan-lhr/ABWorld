@@ -1,3 +1,4 @@
+import { goGeneration } from "./go-generation.ts";
 import type { DatabaseSync } from "node:sqlite";
 import type { IncomingMessage } from "node:http";
 import {
@@ -89,16 +90,11 @@ export function gateEditing(db: DatabaseSync) {
     let dispatched = true;
     const t: Trace = { status: "失败", stage: "请求模型" };
     try {
-      const res = await fetch(goURL, {
-        method: "POST",
-        headers: goHeaders(key),
-        redirect: "error",
-        signal: AbortSignal.timeout(110000),
-        body: JSON.stringify({
-          model: goModel,
-          stream: false,
+      const res = await goGeneration(
+        key,
+        allowance(state.merit) - state.spent,
+        {
           reasoning_effort: "low",
-          max_tokens: 750,
           response_format: { type: "json_object" },
           messages: [
             {
@@ -111,8 +107,8 @@ export function gateEditing(db: DatabaseSync) {
               content: JSON.stringify({ existing: current, request: b.prompt }),
             },
           ],
-        }),
-      });
+        },
+      );
       t.http = res.status;
       if (!res.ok) {
         if (res.status < 500) dispatched = false;

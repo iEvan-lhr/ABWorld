@@ -151,12 +151,14 @@ export function civicService(
   }
   async function repair(uid: number, task: Task, key?: string) {
     const day = dayNumber();
+    let remaining = 0;
     tx(() => {
       enroll(uid);
       const s = state(uid);
       if (s.home[task] || s.pending || (task === "yard" && !s.home.roof))
         throw Error("任务已完成、正在处理，或尚未解锁");
-      if (allowance(s.merit) - s.spent < taskBudget)
+      remaining = allowance(s.merit) - s.spent;
+      if (remaining < taskBudget)
         throw Error("今日剩余精力不足以预留单次任务预算");
       db.prepare("INSERT INTO civic_jobs VALUES(?,?,?,?)").run(
         uid,
@@ -165,7 +167,7 @@ export function civicService(
         "running",
       );
     });
-    const result = await designer(root, dir, task, key);
+    const result = await designer(root, dir, task, key, remaining);
     return tx(() => {
       issue(uid);
       if (result.tokens === null) {

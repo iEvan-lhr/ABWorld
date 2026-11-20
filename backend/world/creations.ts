@@ -1,3 +1,4 @@
+import { goGeneration } from "./go-generation.ts";
 import { placementRights } from "./placement-rights.ts";
 import {
   creationTypes,
@@ -233,63 +234,54 @@ export function creationStore(
           dispatched = false;
         try {
           dispatched = true;
-          const r = await fetch(goURL, {
-            method: "POST",
-            headers: goHeaders(key),
-            redirect: "error",
-            signal: AbortSignal.timeout(110000),
-            body: JSON.stringify({
-              model: goModel,
-              stream: false,
-              max_tokens: 4800,
-              reasoning_effort: "low",
-              response_format: { type: "json_object" },
-              messages: [
-                {
-                  role: "system",
-                  content:
-                    instructions +
-                    (quick
-                      ? " 按上述示例直接返回蓝图对象（version、catalogVersion、name、seed、parts），合理选择实际尺寸，底部中心位于原点。"
-                      : " Return JSON {anchor,blueprint}. Fit the requested dimensions. Select only an available anchor. Keep the central doorway and courtyard path free."),
-                },
-                {
-                  role: "user",
-                  content: JSON.stringify(
-                    quick
-                      ? {
-                          category:
-                            creationTypes[
-                              b.category as keyof typeof creationTypes
-                            ],
-                          description: b.prompt,
-                        }
-                      : {
-                          sceneContext: context,
-                          description: b.prompt,
-                          dimensions: {
-                            length: b.length,
-                            width: b.width,
-                            height: b.height,
-                          },
-                          house: {
-                            hall: [8.4, 5, 2.8],
-                            courtyard: [14, 17.2],
-                            porch: s.home.roof,
-                            furnishings: s.home.yard,
-                            door: "middle of south wall",
-                            anchors,
-                            occupied: occupied.map((o) => ({
-                              anchor: o.anchor,
-                              name: JSON.parse(String(o.blueprint)).name,
-                            })),
-                            available: options,
-                          },
+          const r = await goGeneration(key, allowance(s.merit) - s.spent, {
+            reasoning_effort: "low",
+            response_format: { type: "json_object" },
+            messages: [
+              {
+                role: "system",
+                content:
+                  instructions +
+                  (quick
+                    ? " 按上述示例直接返回蓝图对象（version、catalogVersion、name、seed、parts），合理选择实际尺寸，底部中心位于原点。"
+                    : " Return JSON {anchor,blueprint}. Fit the requested dimensions. Select only an available anchor. Keep the central doorway and courtyard path free."),
+              },
+              {
+                role: "user",
+                content: JSON.stringify(
+                  quick
+                    ? {
+                        category:
+                          creationTypes[
+                            b.category as keyof typeof creationTypes
+                          ],
+                        description: b.prompt,
+                      }
+                    : {
+                        sceneContext: context,
+                        description: b.prompt,
+                        dimensions: {
+                          length: b.length,
+                          width: b.width,
+                          height: b.height,
                         },
-                  ),
-                },
-              ],
-            }),
+                        house: {
+                          hall: [8.4, 5, 2.8],
+                          courtyard: [14, 17.2],
+                          porch: s.home.roof,
+                          furnishings: s.home.yard,
+                          door: "middle of south wall",
+                          anchors,
+                          occupied: occupied.map((o) => ({
+                            anchor: o.anchor,
+                            name: JSON.parse(String(o.blueprint)).name,
+                          })),
+                          available: options,
+                        },
+                      },
+                ),
+              },
+            ],
           });
           trace.http = r.status;
           if (!r.ok) {
@@ -313,7 +305,9 @@ export function creationStore(
                 : b.anchor;
           if (!quick && !options.includes(anchor))
             throw Error("AI 选择的位置不符合摆放约束");
-          const parsed = parseBlueprint(quick ? result.blueprint ?? result : result.blueprint);
+          const parsed = parseBlueprint(
+            quick ? (result.blueprint ?? result) : result.blueprint,
+          );
           const bp = quick ? parsed : fitDimensions(parsed, size);
           return transaction(() => {
             if (context) requireEdit(uid, context.target.id);

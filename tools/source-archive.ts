@@ -11,7 +11,7 @@ export async function sourceArchive(root: string) {
       else if (e.isFile()) archive[f] = await readFile(path.join(root, f));
     }
   }
-  for (const folder of ["frontend", "backend", "tools", "tests"])
+  for (const folder of ["frontend", "backend", "tools", "tests", "docs"])
     await include(folder);
   for (const file of [
     "LICENSE",

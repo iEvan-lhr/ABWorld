@@ -1,6 +1,12 @@
+import { goGeneration } from "./go-generation.ts";
 import { goURL, goModel, goHeaders } from "./go-subscription.ts";
-import { design, tasks, type Design, type Task } from "../../frontend/src/civic/rules.ts";
-export const taskBudget = 32768;
+import {
+  design,
+  tasks,
+  type Design,
+  type Task,
+} from "../../frontend/src/civic/rules.ts";
+export const taskBudget = 1;
 interface Result {
   tokens: number | null;
   started: boolean;
@@ -29,24 +35,16 @@ export async function runDesigner(
   _dir: string,
   task: Task,
   key?: string,
+  remaining = Infinity,
 ): Promise<Result> {
   if (!key)
     return { started: false, tokens: null, error: "请先连接 OpenCode Go 订阅" };
   const prompt = `为洛阳城一间宽八米的木构民宅设计${tasks[task].name}。仅输出一个 JSON 对象。wood 是 dark 或 warm；posts 是 2–4 的整数；depth 是 0.9–1.6 米；lattice 是 3–7 的整数；jars 是 1–3 的整数；bench 是 left 或 right。`;
   let used: number | null = null;
   try {
-    const r = await fetch(goURL, {
-      method: "POST",
-      headers: goHeaders(key),
-      redirect: "error",
-      signal: AbortSignal.timeout(110000),
-      body: JSON.stringify({
-        model: goModel,
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" },
-        max_tokens: 1024,
-        stream: false,
-      }),
+    const r = await goGeneration(key, remaining, {
+      messages: [{ role: "user", content: prompt }],
+      response_format: { type: "json_object" },
     });
     if (!r.ok)
       return {
