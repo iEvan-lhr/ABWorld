@@ -1,6 +1,6 @@
 # 洛阳公服
 
-玩家入口为 `https://111.229.171.148/`。2026 年 11 月 20 日已完成服务器部署和机内健康检查。公网连接测试超时，开放前需要在云控制台允许 TCP 80 和 443 入站并完成证书签发。公服使用自己的账号、作品、住宅和交易存档。进入 AI 创作时，在游戏设置中连接个人可用的模型服务。
+玩家入口为 `https://111.229.171.148/`。2026 年 11 月 20 日已开放公网访问。HTTPS 首页及健康检查均已从公网验证。公服使用自己的账号、作品、住宅和交易存档。进入 AI 创作时，在游戏设置中连接个人可用的模型服务。
 
 ## 部署
 
@@ -15,4 +15,4 @@ docker compose -f compose.yaml -f compose.https.yaml up -d
 
 为短期 IP 证书安排自动续期，续签成功后执行 `docker compose exec -T web nginx -s reload`。宿主机的证书目录由前端只读挂载。日常更新保留 `world-data` 命名卷，备份请在停止 API 后复制卷内容。
 
-当前服务器已安装 `abworld-https.timer`。放行端口后可执行 `sudo systemctl start abworld-https.service` 立即签发和启用证书。使用 `sudo journalctl -u abworld-https.service -n 30` 查看结果。
+当前服务器已安装 `abworld-https.timer`。需要手动检查续期时可执行 `sudo systemctl start abworld-https.service` 立即签发和启用证书。使用 `sudo journalctl -u abworld-https.service -n 30` 查看结果。
