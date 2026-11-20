@@ -1,3 +1,4 @@
+import { modelBase, localModelHost } from "./model-base.ts";
 import { goBaseURL, goModel } from "./go-provider.ts";
 import { checkChat, models, type Connection } from "./workshop/model.ts";
 export function modelSettings(release: () => void) {
@@ -22,10 +23,26 @@ export function modelSettings(release: () => void) {
       localStorage.setItem("abworld.model." + s, v);
     } catch {}
   }
+  function warn() {
+    const w = id("modelTransport");
+    try {
+      const u = modelBase(url.value);
+      w.hidden =
+        provider.value !== "custom" ||
+        u.protocol !== "http:" ||
+        localModelHost(u.hostname);
+      w.textContent = w.hidden
+        ? ""
+        : `公服到 ${u.host} 这一段使用 HTTP，密钥和提示词会明文传输。`;
+    } catch {
+      w.hidden = true;
+    }
+  }
   function restore() {
     const go = provider.value === "go";
     url.value = go ? goBaseURL : saved("url") || "http://127.0.0.1:11434/v1";
     url.readOnly = go;
+    warn();
     model.value = go ? goModel : saved("id");
     key.value = "";
     id("modelIds").replaceChildren();
@@ -36,11 +53,7 @@ export function modelSettings(release: () => void) {
       : "";
   }
   provider.value =
-    saved("provider") === "custom" &&
-    saved("url") &&
-    !saved("url").includes("11434")
-      ? "custom"
-      : "go";
+    saved("provider") === "custom" && saved("url") ? "custom" : "go";
   restore();
   function remember() {
     store("provider", provider.value);
@@ -70,6 +83,7 @@ export function modelSettings(release: () => void) {
     remember();
   };
   url.oninput = () => {
+    warn();
     key.value = "";
   };
   model.onchange = url.onchange = remember;

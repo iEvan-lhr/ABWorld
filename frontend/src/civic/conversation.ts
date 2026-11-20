@@ -299,7 +299,7 @@ export function conversation(
     const prompt = input("quickPrompt").value.trim();
     if (!prompt || busy) return;
     void run(async () => {
-      note.textContent = "DeepSeek 正在设计…";
+      note.textContent = "模型正在设计…";
       const bubble = document.createElement("div");
       bubble.className = "chatUser";
       bubble.textContent = prompt;
@@ -325,6 +325,9 @@ export function conversation(
   return (edit?: () => void, name?: string) => {
     release();
     dialog.showModal();
+    const providerName = get("chatProviderName");
+    if (providerName)
+      providerName.textContent = input("modelId").value.trim() || "AI 创作";
     const b = button("quickEdit");
     b.hidden = !edit;
     b.textContent = `修改${name ?? "选中物件"}`;

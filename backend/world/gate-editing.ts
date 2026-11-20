@@ -1,3 +1,4 @@
+import { selectedProvider } from "./custom-provider.ts";
 import { goGeneration } from "./go-generation.ts";
 import type { DatabaseSync } from "node:sqlite";
 import type { IncomingMessage } from "node:http";
@@ -70,13 +71,15 @@ export function gateEditing(db: DatabaseSync) {
     let key = req.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
     if (
       !key &&
+      !selectedProvider.getStore() &&
       localOwner(
         req,
         db.prepare("SELECT name FROM users WHERE id=?").get(uid)?.name,
       )
     )
       key = subscriptionKey();
-    if (!key) throw Error("请连接 OpenCode Go 订阅");
+    if (!key && !selectedProvider.getStore())
+      throw Error("请连接 OpenCode Go 订阅");
     const day = dayNumber();
     if (
       allowance(state.merit) - state.spent < taskBudget ||

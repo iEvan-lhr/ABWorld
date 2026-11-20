@@ -1,3 +1,4 @@
+import { selectedProvider } from "./custom-provider.ts";
 import { goGeneration } from "./go-generation.ts";
 import { goURL, goModel, goHeaders } from "./go-subscription.ts";
 import {
@@ -37,7 +38,7 @@ export async function runDesigner(
   key?: string,
   remaining = Infinity,
 ): Promise<Result> {
-  if (!key)
+  if (!key && !selectedProvider.getStore())
     return { started: false, tokens: null, error: "请先连接 OpenCode Go 订阅" };
   const prompt = `为洛阳城一间宽八米的木构民宅设计${tasks[task].name}。仅输出一个 JSON 对象。wood 是 dark 或 warm；posts 是 2–4 的整数；depth 是 0.9–1.6 米；lattice 是 3–7 的整数；jars 是 1–3 的整数；bench 是 left 或 right。`;
   let used: number | null = null;
@@ -50,7 +51,7 @@ export async function runDesigner(
       return {
         started: r.status >= 500,
         tokens: null,
-        error: `OpenCode Go 返回 HTTP ${r.status}，请检查订阅权限或额度。`,
+        error: `${selectedProvider.getStore()?.model ?? "OpenCode Go"} 返回 HTTP ${r.status}，请检查模型服务或额度。`,
       };
     const data = await r.json();
     used = usage({

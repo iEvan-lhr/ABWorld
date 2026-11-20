@@ -1,3 +1,4 @@
+import { selectedProvider } from "./custom-provider.ts";
 import { assemble, normalizeSizes } from "../../frontend/src/civic/assembly.ts";
 import { goGeneration } from "./go-generation.ts";
 import { placementRights } from "./placement-rights.ts";
@@ -300,13 +301,15 @@ export function creationStore(
             throw Error("所选位置已占用或尺寸过大");
           const key =
             req.headers.authorization?.match(/^Bearer (.+)$/)?.[1] ??
-            (localOwner(
+            (!selectedProvider.getStore() &&
+            localOwner(
               req,
               db.prepare("SELECT name FROM users WHERE id=?").get(uid)?.name,
             )
               ? subscriptionKey()
               : "");
-          if (!key) throw Error("请在模型设置中连接自己的 Go 订阅");
+          if (!key && !selectedProvider.getStore())
+            throw Error("请在模型设置中连接自己的 Go 订阅");
           const day = dayNumber();
           transaction(() => {
             if (
@@ -394,7 +397,9 @@ export function creationStore(
             trace.http = r.status;
             if (!r.ok) {
               if (r.status < 500) dispatched = false;
-              throw Error(`Go 服务返回 HTTP ${r.status}`);
+              throw Error(
+                `${selectedProvider.getStore()?.model ?? "OpenCode Go"} 返回 HTTP ${r.status}`,
+              );
             }
             trace.stage = "读取响应";
             const data = await jsonResponse(r);

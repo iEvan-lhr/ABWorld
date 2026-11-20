@@ -1,3 +1,4 @@
+import { generationHeaders } from "../model-base.ts";
 import { conversation } from "./conversation.ts";
 import { placementUI } from "./placement-ui.ts";
 import { responseJSON } from "./gate-editor.ts";
@@ -79,12 +80,7 @@ export function studio(
   async function api(path: string, body?: unknown) {
     const headers: Record<string, string> = {};
     if (body) headers["Content-Type"] = "application/json";
-    if (
-      path === "design" &&
-      field("provider").value === "go" &&
-      field("modelKey").value.trim()
-    )
-      headers.Authorization = "Bearer " + field("modelKey").value.trim();
+    if (path === "design") Object.assign(headers, generationHeaders());
     const r = await fetch("/api/civic/creations/" + path, {
       method: body ? "POST" : "GET",
       headers,
@@ -321,7 +317,7 @@ export function studio(
   $("designForm").onsubmit = (e) => {
     e.preventDefault();
     void perform(async () => {
-      hint.textContent = "DeepSeek 正在根据尺寸和住宅布局设计…";
+      hint.textContent = "模型正在根据尺寸和住宅布局设计…";
       const result = await api("design", {
         context,
         length: Number(field("objectL").value),

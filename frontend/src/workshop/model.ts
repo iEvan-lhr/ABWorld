@@ -1,3 +1,4 @@
+import { modelBase, localModelHost } from "../model-base.ts";
 import { goBaseURL } from "../go-provider.ts";
 import { instructions, parseBlueprint } from "./blueprint.ts";
 export interface Connection {
@@ -7,19 +8,7 @@ export interface Connection {
   go?: boolean;
 }
 function endpoint(base: string, path: string) {
-  const u = new URL(base);
-  if (
-    u.username ||
-    u.password ||
-    u.search ||
-    u.hash ||
-    !(
-      u.protocol === "https:" ||
-      (u.protocol === "http:" &&
-        ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname))
-    )
-  )
-    throw Error("模型地址请使用 HTTPS 或本机 HTTP 地址");
+  const u = modelBase(base);
   u.pathname = u.pathname.replace(/\/+$/, "") + "/" + path;
   return u.href;
 }
@@ -41,21 +30,37 @@ async function request(
     (location.protocol === "https:" ||
       ["127.0.0.1", "localhost", "[::1]"].includes(location.hostname)) &&
     /^https?:$/.test(location.protocol);
-  const url = goCatalog
-    ? goBaseURL + "/models"
-    : localRelay
-      ? "/api/model/go/chat"
-      : endpoint(c.go ? goBaseURL : c.url, path);
+  const customRelay =
+    !c.go &&
+    typeof location !== "undefined" &&
+    /^https?:$/.test(location.protocol) &&
+    !localModelHost(modelBase(c.url).hostname);
+  if (customRelay) {
+    headers["Content-Type"] = "application/json";
+    headers["X-ABWorld-Base"] = encodeURIComponent(modelBase(c.url).href);
+    headers["X-ABWorld-Model"] = encodeURIComponent(c.model);
+  }
+  const url = customRelay
+    ? "/api/model/custom/" + (body ? "chat" : "models")
+    : goCatalog
+      ? goBaseURL + "/models"
+      : localRelay
+        ? "/api/model/go/chat"
+        : endpoint(c.go ? goBaseURL : c.url, path);
   let r: Response;
   try {
     r = await fetch(url, {
-      method: body ? "POST" : "GET",
+      method: customRelay || body ? "POST" : "GET",
       headers,
       signal,
       redirect: "error",
-      credentials: localRelay ? "same-origin" : "omit",
+      credentials: localRelay || customRelay ? "same-origin" : "omit",
       referrerPolicy: "no-referrer",
-      body: body ? JSON.stringify(body) : undefined,
+      body: customRelay
+        ? JSON.stringify(body ?? {})
+        : body
+          ? JSON.stringify(body)
+          : undefined,
     });
   } catch (e) {
     if (signal.aborted) throw e;
@@ -63,10 +68,10 @@ async function request(
       "浏览器无法连接模型。请检查服务地址、浏览器跨域许可（CORS）和网络。",
     );
   }
-  if (localRelay && (r.status === 401 || r.status === 403)) {
+  if ((localRelay || customRelay) && !r.ok) {
     if (r.headers.get("X-ABWorld-Model-Upstream") === "1")
       throw Error(
-        `OpenCode Go 拒绝了这次模型请求（HTTP ${r.status}），请检查订阅密钥和模型权限。`,
+        `${customRelay ? "自定义模型服务" : "OpenCode Go"}返回 HTTP ${r.status}。${r.status === 401 || r.status === 403 ? "请检查该服务的密钥与模型权限。" : r.status === 404 ? "请检查基础地址及模型名称。" : "请检查上游服务状态。"}`,
       );
     const detail = await r.json().catch(() => null);
     throw Error(

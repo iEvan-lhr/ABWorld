@@ -1,3 +1,4 @@
+import { selectedProvider } from "./custom-provider.ts";
 import { housingMarket } from "./housing.ts";
 import { gateEditing } from "./gate-editing.ts";
 import { gateStyle } from "../../frontend/src/civic/gate-style.ts";
@@ -386,9 +387,14 @@ export function civicService(
           const owner = db
             .prepare("SELECT name FROM users WHERE id=?")
             .get(uid);
-          if (!key && designer === runDesigner && localOwner(req, owner?.name))
+          if (
+            !key &&
+            !selectedProvider.getStore() &&
+            designer === runDesigner &&
+            localOwner(req, owner?.name)
+          )
             key = subscriptionKey();
-          if (!key && designer === runDesigner)
+          if (!key && !selectedProvider.getStore() && designer === runDesigner)
             throw Error("请先在设置中连接 OpenCode Go 订阅");
           const result = await repair(
             uid,

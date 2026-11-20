@@ -1,3 +1,4 @@
+import { generationHeaders } from "../model-base.ts";
 import * as T from "three";
 import { gateLeaf } from "./gate-mesh.ts";
 import { gateStyle, originalGate, type GateStyle } from "./gate-style.ts";
@@ -68,12 +69,7 @@ export function gateEditor(release: () => void) {
   async function call(route: string, data?: unknown) {
     const headers: Record<string, string> = {};
     if (data) headers["Content-Type"] = "application/json";
-    if (
-      route === "preview" &&
-      field("provider").value === "go" &&
-      field("modelKey").value.trim()
-    )
-      headers.Authorization = "Bearer " + field("modelKey").value.trim();
+    if (route === "preview") Object.assign(headers, generationHeaders());
     return responseJSON(
       await fetch(`/api/civic/gate/${home}/${route}`, {
         method: data ? "POST" : "GET",

@@ -1,3 +1,4 @@
+import { selectedProvider, customRequest } from "./custom-provider.ts";
 import { createInterface } from "node:readline";
 import { Readable } from "node:stream";
 import { goURL, goHeaders } from "./go-subscription.ts";
@@ -26,15 +27,24 @@ export function outputBudget(messages: Message[], available: number) {
   );
 }
 export async function goGeneration(
-  key: string,
+  key: string | undefined,
   available: number,
   params: Generation,
 ) {
   const limit = outputBudget(params.messages, available);
   if (limit < 1) return new Response(null, { status: 429 });
+  const custom = selectedProvider.getStore();
+  if (custom) {
+    return customRequest(custom, "chat", {
+      model: custom.model,
+      messages: params.messages,
+      stream: false,
+      max_tokens: Math.min(8192, limit),
+    });
+  }
   const response = await fetch(goURL, {
     method: "POST",
-    headers: goHeaders(key),
+    headers: goHeaders(key ?? ""),
     redirect: "error",
     signal: AbortSignal.timeout(8 * 60 * 60 * 1000),
     body: JSON.stringify({

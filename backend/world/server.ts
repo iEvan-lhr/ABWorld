@@ -1,3 +1,8 @@
+import {
+  customConfig,
+  selectedProvider,
+  modelProbe,
+} from "./custom-provider.ts";
 import { createServer } from "node:http";
 import path from "node:path";
 import { civicService } from "./civic.ts";
@@ -21,7 +26,24 @@ const server = createServer(async (req, res) => {
       return;
     }
     const name = new URL(req.url ?? "/", "http://localhost").pathname;
+    if (name.startsWith("/api/model/custom/")) {
+      await modelProbe(req, res, uid, name.slice("/api/model/custom/".length));
+      return;
+    }
     if (name.startsWith("/api/civic/")) {
+      const custom = customConfig(req);
+      if (custom) {
+        if (!custom.model) {
+          res
+            .writeHead(400, { "Content-Type": "application/json" })
+            .end(JSON.stringify({ error: "请填写模型名称" }));
+          return;
+        }
+        await selectedProvider.run(custom, () =>
+          civic.handle(uid, name.slice(11), req, res),
+        );
+        return;
+      }
       await civic.handle(uid, name.slice(11), req, res);
       return;
     }

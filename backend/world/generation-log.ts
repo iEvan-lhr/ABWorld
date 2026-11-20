@@ -1,3 +1,5 @@
+import { selectedProvider } from "./custom-provider.ts";
+import { goModel } from "../../frontend/src/go-provider.ts";
 import type { DatabaseSync } from "node:sqlite";
 export type Trace = {
   logId?: number;
@@ -35,9 +37,16 @@ export function traces(db: DatabaseSync) {
       return Number(
         db
           .prepare(
-            "INSERT INTO generation_log(uid,kind,model,status,stage,prompt,category,edition) VALUES(?,?,'deepseek-v4.1-flash','进行中','准备生成',?,?,?)",
+            "INSERT INTO generation_log(uid,kind,model,status,stage,prompt,category,edition) VALUES(?,?,?,'进行中','准备生成',?,?,?)",
           )
-          .run(uid, kind, prompt, category, mode).lastInsertRowid,
+          .run(
+            uid,
+            kind,
+            selectedProvider.getStore()?.model ?? goModel,
+            prompt,
+            category,
+            mode,
+          ).lastInsertRowid,
       );
     },
     failPending(uid: number, id: number, error: unknown) {
@@ -80,7 +89,7 @@ export function traces(db: DatabaseSync) {
       ).run(
         uid,
         kind,
-        "deepseek-v4.1-flash",
+        selectedProvider.getStore()?.model ?? goModel,
         t.status,
         t.stage,
         t.http ?? null,

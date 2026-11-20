@@ -1,3 +1,4 @@
+import { generationHeaders } from "../model-base.ts";
 import { repairPicker } from "./repair-picker.ts";
 import { courtyard, doorZ, type Door } from "./courtyard.ts";
 import { homeGuide } from "./home-guide.ts";
@@ -160,16 +161,12 @@ export function civicPanel(
     const headers: Record<string, string> = {};
     if (post) {
       headers["Content-Type"] = "application/json";
-      const provider = el("provider") as HTMLSelectElement,
-        key = (el("modelKey") as HTMLInputElement).value.trim();
       if (
-        (route === "roof" ||
-          route === "yard" ||
-          route.startsWith("housing/")) &&
-        provider.value === "go" &&
-        key
+        route === "roof" ||
+        route === "yard" ||
+        route.startsWith("housing/repair/")
       )
-        headers.Authorization = "Bearer " + key;
+        Object.assign(headers, generationHeaders());
     }
     const r = await fetch("/api/civic/" + route, {
       method: post ? "POST" : "GET",
@@ -244,9 +241,7 @@ export function civicPanel(
     (el("restoreVacant") as HTMLButtonElement).disabled = true;
     render();
     el("civicFeedback").textContent =
-      route === "resident"
-        ? "正在办理入住…"
-        : "DeepSeek 4.1 Flash 正在通过 OpenCode Go 设计…";
+      route === "resident" ? "正在办理入住…" : "模型正在设计并核算用量…";
     try {
       state = await api(route, true);
       el("civicFeedback").textContent =

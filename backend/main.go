@@ -216,6 +216,7 @@ func run() error {
 	}
 	protected.Match([]string{"GET", "POST"}, "/civic/*", forward)
 	protected.POST("/model/go/chat", a.modelChat)
+	protected.POST("/model/custom/:operation", forward)
 	protected.GET("/civic/homes", a.houses)
 	protected.GET("/world/objects", forward)
 	addr := env("ABWORLD_API_ADDR", "127.0.0.1:8787")
