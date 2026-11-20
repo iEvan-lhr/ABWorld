@@ -1,3 +1,6 @@
+import { currentSave } from "./account.ts";
+import { loadCharacter } from "./player/character.ts";
+import { walkPose } from "./player/pose.ts";
 import { gateEditor, generationLog } from "./civic/gate-editor.ts";
 import { focusMode } from "./civic/focus.ts";
 import { studio } from "./civic/studio.ts";
@@ -432,6 +435,16 @@ const player = {
 player.x += Math.cos(player.angle) * 14.2;
 player.z -= Math.sin(player.angle) * 14.2;
 player.angle += 0.11;
+const savedPose = loadCharacter(currentSave()).pose;
+if (
+  savedPose &&
+  available.has(
+    `${Math.floor(savedPose.x / CELL)}_${Math.floor(savedPose.z / CELL)}`,
+  )
+) {
+  Object.assign(player, savedPose);
+  player.face = player.angle;
+}
 let wanted = new Set<string>(),
   plans: [string, number][] = [],
   lastPlan = "",
@@ -542,7 +555,11 @@ function readPacket<K extends keyof StreamPackets>(
 }
 function pump() {
   while (busy < 8 && queue.length) {
-    const job = queue.shift()!;
+    const urgent = queue.findIndex(
+      (j) => j.key.startsWith("tiles/") || j.key.startsWith("geometry/"),
+    );
+    if (!ready && urgent < 0) break;
+    const job = queue.splice(urgent < 0 ? 0 : urgent, 1)[0];
     busy++;
     const el = document.createElement("script");
     el.src = "./洛阳漫游资源/" + job.key + ".js";
@@ -657,15 +674,15 @@ function texture(id: number, owner: Owner) {
 }
 async function getMat(id: number, vc: boolean, owner: Owner) {
   const spec = map.materials[id];
-  const tex =
-    spec.texture === undefined ? null : await texture(spec.texture, owner);
+  const pendingTexture =
+    spec.texture === undefined ? null : texture(spec.texture, owner);
   return borrow(
     "m" + id + "/" + vc,
     owner,
     () => {
       const opts = {
         color: new T.Color().fromArray(spec.c),
-        map: tex,
+        map: null,
         vertexColors: !!vc,
         side: spec.side ? T.DoubleSide : T.FrontSide,
         transparent: spec.alpha === "BLEND",
@@ -673,22 +690,48 @@ async function getMat(id: number, vc: boolean, owner: Owner) {
         depthWrite: spec.alpha !== "BLEND",
         alphaTest: spec.alpha === "MASK" ? (spec.cut ?? 0.5) : 0,
       };
-      return spec.unlit
+      const material = spec.unlit
         ? new T.MeshBasicMaterial(opts)
         : new T.MeshStandardMaterial({
             ...opts,
             roughness: spec.r,
             metalness: 0,
           });
+      if (pendingTexture) {
+        material.visible = spec.alpha !== "MASK";
+        void pendingTexture
+          .then((tex) => {
+            material.map = tex;
+            material.visible = true;
+            material.needsUpdate = true;
+          })
+          .catch(() => {});
+      }
+      return material;
     },
     dispose,
   );
 }
+const starterGeometry: Promise<Record<string, string>> =
+  location.protocol === "file:"
+    ? Promise.resolve({})
+    : fetch("./洛阳漫游资源/startup/geometry-v1.json", {
+        signal: AbortSignal.timeout(12000),
+      })
+        .then((r) => (r.ok ? r.json() : {}))
+        .catch(() => ({}));
 function shared(id: number, owner: Owner) {
   return borrow(
     "g" + id,
     owner,
-    async () => geoFrom(await readPacket("geometry", id)),
+    async () => {
+      const packet = (await starterGeometry)[id];
+      return geoFrom(
+        packet
+          ? ((await decodePacket("geometry/" + id, packet)) as PackedGeometry)
+          : await readPacket("geometry", id),
+      );
+    },
     dispose,
   );
 }
@@ -922,6 +965,7 @@ function plan() {
       streamTile(k);
   }
   ready = loaded.has(home);
+  if (ready) pump();
   status.hidden = ready && !waiting;
   if (!ready)
     status.textContent = failed.has(home)
@@ -1685,10 +1729,13 @@ for (const el of document.querySelectorAll<HTMLButtonElement>("[data-key]")) {
   };
   el.onlostpointercapture = () => keys.delete(el.dataset.key!);
 }
-const character = characterPanel(() => {
-  releaseLook();
-  keys.clear();
-});
+const character = characterPanel(
+  () => {
+    releaseLook();
+    keys.clear();
+  },
+  () => (ready ? walkPose(player) : undefined),
+);
 const atlas = cityMap(player, () => {
   releaseLook();
   keys.clear();
@@ -1774,8 +1821,12 @@ const focus = focusMode(
     settingsOpen() ||
     document.hidden,
 );
-initHorizon().catch((error) => {
-  console.error(error);
-  setTimeout(() => initHorizon().catch(console.error), 2500);
-});
+function startDistantView() {
+  if (!ready) {
+    setTimeout(startDistantView, 100);
+    return;
+  }
+  initHorizon().catch(() => setTimeout(startDistantView, 2500));
+}
+setTimeout(startDistantView, 100);
 requestAnimationFrame(draw);

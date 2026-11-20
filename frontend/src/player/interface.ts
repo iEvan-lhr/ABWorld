@@ -1,3 +1,4 @@
+import type { WalkPose } from "./pose.ts";
 import { hotbar } from "./hotbar.ts";
 import { currentSave, saveProgress } from "../account.ts";
 import {
@@ -8,13 +9,17 @@ import {
   useItem,
   type ItemId,
 } from "./character.ts";
-export function characterPanel(release: () => void) {
+export function characterPanel(
+  release: () => void,
+  location: () => WalkPose | undefined,
+) {
   const state = loadCharacter(currentSave());
   const byId = (id: string) => document.getElementById(id)!;
   const panel = byId("characterPanel"),
     opener = byId("bagOpen"),
     message = byId("itemMessage");
   function save() {
+    state.pose = location() ?? state.pose;
     saveProgress(state);
   }
   const belt = hotbar(state, (id) => {

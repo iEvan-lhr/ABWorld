@@ -1,4 +1,4 @@
-import {goBaseURL,goModel} from './go-provider.ts';
+import { goBaseURL, goModel } from "./go-provider.ts";
 import { checkChat, models, type Connection } from "./workshop/model.ts";
 export function modelSettings(release: () => void) {
   const id = <T extends HTMLElement>(s: string) =>
@@ -24,14 +24,16 @@ export function modelSettings(release: () => void) {
   }
   function restore() {
     const go = provider.value === "go";
-    url.value = go
-      ? goBaseURL
-      : saved("url") || "http://127.0.0.1:11434/v1";
+    url.value = go ? goBaseURL : saved("url") || "http://127.0.0.1:11434/v1";
     url.readOnly = go;
     model.value = go ? goModel : saved("id");
     key.value = "";
     id("modelIds").replaceChildren();
-    status.textContent = go ? "Evan 在本机可直接使用已有 Go 订阅。" : "";
+    status.textContent = go
+      ? ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname)
+        ? "本机 Evan 可使用已有 Go 订阅。"
+        : "公服使用你填写的 OpenCode Go 订阅密钥。"
+      : "";
   }
   provider.value =
     saved("provider") === "custom" &&

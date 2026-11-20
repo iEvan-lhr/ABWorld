@@ -907,3 +907,4 @@ header button {
     padding: 10px;
   }
 }
+#housingEntry select{width:100%;padding:7px}#housingList{max-height:42dvh;overflow:auto}#housingList article{margin-top:9px;padding:10px;border:1px solid var(--line);background:#fffaf0}#housingList article p,#housingHint{font-size:12px}#housingList article button,#restoreVacant{background:var(--jade);color:var(--paper)}

@@ -22,6 +22,13 @@ import (
 	"unicode/utf8"
 )
 
+type walkPose struct {
+	X     float64 `json:"x"`
+	Y     float64 `json:"y"`
+	Z     float64 `json:"z"`
+	Angle float64 `json:"angle"`
+	Pitch float64 `json:"pitch"`
+}
 type user struct {
 	ID       int     `json:"id"`
 	Name     string  `json:"name"`
@@ -190,12 +197,26 @@ func (a *api) save(c echo.Context) error {
 			Attributes map[string]int `json:"attributes"`
 			Bag        map[string]int `json:"bag"`
 			Exhausted  bool           `json:"exhausted"`
+			Pose       *walkPose      `json:"pose,omitempty"`
 		}
 	}
 	if decode(c, &in) != nil || in.Revision == nil || in.State.Version != 1 {
 		return fail(c, 400, "存档格式无效")
 	}
 	s := &in.State
+	if p := s.Pose; p != nil {
+		if math.Abs(p.X) > 4050 || p.Z < -3720 || p.Z > 4630 || p.Y < -5 || p.Y > 260 || math.Abs(p.Pitch) > 1.15 {
+			return fail(c, 400, "位置超出城市范围")
+		}
+		p.Angle = math.Atan2(math.Sin(p.Angle), math.Cos(p.Angle))
+	} else if u.Progress != nil {
+		var old struct {
+			Pose *walkPose `json:"pose"`
+		}
+		if json.Unmarshal([]byte(*u.Progress), &old) == nil {
+			s.Pose = old.Pose
+		}
+	}
 	for _, n := range []*float64{&s.Health, &s.Stamina, &s.Hunger} {
 		*n = math.Min(100, math.Max(0, *n))
 	}

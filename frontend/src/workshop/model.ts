@@ -53,7 +53,7 @@ async function request(
       headers,
       signal,
       redirect: "error",
-      credentials: "omit",
+      credentials: localRelay ? "same-origin" : "omit",
       referrerPolicy: "no-referrer",
       body: body ? JSON.stringify(body) : undefined,
     });
@@ -61,6 +61,18 @@ async function request(
     if (signal.aborted) throw e;
     throw Error(
       "浏览器无法连接模型。请检查服务地址、浏览器跨域许可（CORS）和网络。",
+    );
+  }
+  if (localRelay && (r.status === 401 || r.status === 403)) {
+    if (r.headers.get("X-ABWorld-Model-Upstream") === "1")
+      throw Error(
+        `OpenCode Go 拒绝了这次模型请求（HTTP ${r.status}），请检查订阅密钥和模型权限。`,
+      );
+    const detail = await r.json().catch(() => null);
+    throw Error(
+      typeof detail?.error === "string"
+        ? detail.error
+        : "请重新登录洛阳城后测试连接。",
     );
   }
   if (!r.ok)

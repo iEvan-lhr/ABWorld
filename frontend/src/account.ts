@@ -1,3 +1,4 @@
+import { chooseHousing } from "./housing-entry.ts";
 import type { Character } from "./player/character.ts";
 interface User {
   id: number;
@@ -32,7 +33,9 @@ async function api(route: string, data?: unknown) {
   try {
     result = JSON.parse(text);
   } catch {
-    throw Error(`此地址的账号服务返回了无效响应（HTTP ${r.status}）。请打开 pnpm dev 终端显示的地址并刷新页面。`);
+    throw Error(
+      `此地址的账号服务返回了无效响应（HTTP ${r.status}）。请打开 pnpm dev 终端显示的地址并刷新页面。`,
+    );
   }
   if (!r.ok) {
     if (route === "save" && (r.status === 409 || r.status === 401))
@@ -105,6 +108,17 @@ export async function entry() {
         logout.disabled = false;
       }
     };
+    if (u) {
+      const arrival = await chooseHousing(u.name);
+      if (arrival) {
+        const progress = JSON.parse(u.progress ?? '{"version":1}');
+        if (!progress.pose)
+          u.progress = JSON.stringify({
+            ...progress,
+            pose: { ...arrival, y: 0.09, angle: Math.PI, pitch: 0 },
+          });
+      }
+    }
     await import("./main.ts");
     document.body.classList.remove("atGate");
     document.getElementById("gate")!.hidden = true;
@@ -150,6 +164,9 @@ export async function entry() {
     if (current) await enter(current);
     else submit.disabled = mode.disabled = false;
   } catch (error) {
-    hint.textContent = error instanceof Error ? error.message : "账号服务暂时无法连接，请刷新重试。";
+    hint.textContent =
+      error instanceof Error
+        ? error.message
+        : "账号服务暂时无法连接，请刷新重试。";
   }
 }

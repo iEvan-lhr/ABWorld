@@ -1,3 +1,4 @@
+import { walkPose, type WalkPose } from "./pose.ts";
 export const attributes = {
   strength: "力量",
   agility: "敏捷",
@@ -30,6 +31,7 @@ export const items = {
 } as const;
 export type ItemId = keyof typeof items;
 export interface Character {
+  pose?: WalkPose;
   version: 1;
   health: number;
   stamina: number;
@@ -59,6 +61,7 @@ export function loadCharacter(text: string | null) {
   try {
     const data = JSON.parse(text);
     if (data?.version !== 1) return c;
+    c.pose = walkPose(data.pose);
     for (const k of ["health", "stamina", "hunger"] as const)
       if (Number.isFinite(data[k])) c[k] = clamp(data[k]);
     for (const k of Object.keys(items) as ItemId[])
@@ -82,7 +85,9 @@ export function tick(
   c.hunger = clamp(
     c.hunger + seconds * (sprint ? 0.11 : moving ? 0.06 : 0.025),
   );
-  c.stamina = clamp(c.stamina + seconds * (sprint ? -0.18 : moving ? -0.015 : 1.2));
+  c.stamina = clamp(
+    c.stamina + seconds * (sprint ? -0.18 : moving ? -0.015 : 1.2),
+  );
   if (c.stamina <= 0) c.exhausted = true;
   if (c.stamina >= 20) c.exhausted = false;
   if (c.hunger >= 100) c.health = clamp(c.health - seconds * 0.12, 1);

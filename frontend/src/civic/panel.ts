@@ -162,7 +162,9 @@ export function civicPanel(
       const provider = el("provider") as HTMLSelectElement,
         key = (el("modelKey") as HTMLInputElement).value.trim();
       if (
-        (route === "roof" || route === "yard") &&
+        (route === "roof" ||
+          route === "yard" ||
+          route.startsWith("housing/")) &&
         provider.value === "go" &&
         key
       )
@@ -222,6 +224,15 @@ export function civicPanel(
         window.dispatchEvent(
           new CustomEvent("civic-home", { detail: plots[state.home.id] }),
         );
+      const market = await api("housing");
+      const p = market.project;
+      const b = el("restoreVacant") as HTMLButtonElement;
+      b.dataset.stage = p?.roof ? "yard" : "roof";
+      b.textContent = p?.roof
+        ? `完善 ${Number(p.plot) + 1} 号空宅院落 · +50 工`
+        : "修缮下一套空宅檐廊 · +30 工";
+      b.disabled = busy || !!state?.pending;
+      el("vacantStatus").textContent = `可入住空宅 ${market.vacantCount} 套`;
       render();
     } catch (e) {
       el("civicFeedback").textContent = (e as Error).message;
@@ -255,6 +266,8 @@ export function civicPanel(
       );
     }
   };
+  el("restoreVacant").onclick = () =>
+    void act("housing/" + (el("restoreVacant").dataset.stage || "roof"));
   el("openCivic").onclick = () => {
     release();
     dlg.showModal();

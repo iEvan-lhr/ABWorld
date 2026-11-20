@@ -55,8 +55,16 @@ func TestExistingAccountAndSession(t *testing.T) {
 	if w := request("POST", "save", `{"revision":3,"state":{"version":1}}`, cookie); w.Code != 409 {
 		t.Fatal(w.Code)
 	}
-	if w := request("POST", "save", `{"revision":4,"state":{"version":1,"bag":{"cake":2}}}`, cookie); w.Code != 200 {
+	if w := request("POST", "save", `{"revision":4,"state":{"version":1,"bag":{"cake":2},"pose":{"x":123.25,"y":0.09,"z":-16,"angle":1.1,"pitch":0.2}}}`, cookie); w.Code != 200 {
 		t.Fatal(w.Code)
+	}
+	var restored user
+	if err := json.Unmarshal(request("GET", "session", "", cookie).Body.Bytes(), &restored); err != nil || restored.Progress == nil {
+		t.Fatal("missing saved progress")
+	}
+	var payload struct{ Pose *walkPose }
+	if err := json.Unmarshal([]byte(*restored.Progress), &payload); err != nil || payload.Pose == nil || payload.Pose.X != 123.25 || payload.Pose.Z != -16 {
+		t.Fatal("position not restored", payload)
 	}
 	if w := request("POST", "logout", "{}", cookie); w.Code != 200 {
 		t.Fatal(w.Code)

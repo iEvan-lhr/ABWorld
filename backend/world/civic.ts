@@ -1,3 +1,4 @@
+import { housingMarket } from "./housing.ts";
 import { gateEditing } from "./gate-editing.ts";
 import { gateStyle } from "../../frontend/src/civic/gate-style.ts";
 import { objectAccess } from "./object-access.ts";
@@ -39,6 +40,7 @@ export function civicService(
       );
   if (!columns.some((c) => c.name === "gate_style"))
     db.exec("ALTER TABLE citizens ADD COLUMN gate_style TEXT");
+  const housing = housingMarket(db, plots);
   const editGate = gateEditing(db);
   const access = objectAccess(db, root);
   const creations = creationStore(db, access.requireEdit, plots);
@@ -81,19 +83,14 @@ export function civicService(
   }
   function enroll(uid: number, founder = false) {
     if (!db.prepare("SELECT no FROM citizens WHERE uid=?").get(uid)) {
-      const n =
+      const first =
         founder ||
         !!db
-          .prepare("SELECT id FROM users WHERE id=? AND name=\x27Evan\x27")
-          .get(uid)
-          ? 1
-          : Number(
-              db
-                .prepare(
-                  "SELECT MAX(1,COALESCE(MAX(no),1))+1 AS n FROM citizens",
-                )
-                .get()!.n,
-            );
+          .prepare("SELECT id FROM users WHERE id=? AND name='Evan'")
+          .get(uid);
+      if (!first || db.prepare("SELECT no FROM citizens WHERE no=1").get())
+        throw Error("请先选择一套已修缮的空宅办理入住");
+      const n = 1;
       if (n > plots.length) throw Error("住宅已分配完毕");
       db.prepare("INSERT INTO citizens(no,uid,paid) VALUES(?,?,?)").run(
         n,
@@ -149,13 +146,22 @@ export function civicService(
         .all(uid) as unknown as CivicState["ledger"],
     };
   }
-  async function repair(uid: number, task: Task, key?: string) {
+  async function repair(
+    uid: number,
+    task: Task,
+    key?: string,
+    community = false,
+  ) {
     const day = dayNumber();
-    let remaining = 0;
+    let remaining = 0,
+      projectPlot = -1;
     tx(() => {
       enroll(uid);
       const s = state(uid);
-      if (s.home[task] || s.pending || (task === "yard" && !s.home.roof))
+      const target = community ? housing.prepare(uid) : s.home;
+      if (community)
+        projectPlot = Number((target as Record<string, unknown>).plot);
+      if (target[task] || s.pending || (task === "yard" && !target.roof))
         throw Error("任务已完成、正在处理，或尚未解锁");
       remaining = allowance(s.merit) - s.spent;
       if (remaining < taskBudget)
@@ -183,14 +189,24 @@ export function civicService(
       if (plan) {
         const t = tasks[task];
         pay = t.pay;
-        db.prepare(
-          `UPDATE citizens SET ${task}=?,balance=balance+?,merit=merit+? WHERE uid=?`,
-        ).run(JSON.stringify(plan), pay, t.merit, uid);
+        if (community) {
+          db.prepare(
+            `UPDATE housing_projects SET ${task}=? WHERE plot=? AND sponsor=?`,
+          ).run(JSON.stringify(plan), projectPlot, uid);
+          db.prepare(
+            "UPDATE citizens SET balance=balance+?,merit=merit+? WHERE uid=?",
+          ).run(pay, t.merit, uid);
+        } else
+          db.prepare(
+            `UPDATE citizens SET ${task}=?,balance=balance+?,merit=merit+? WHERE uid=?`,
+          ).run(JSON.stringify(plan), pay, t.merit, uid);
       }
       log(
         uid,
         day,
-        tasks[task].name + (plan ? "" : "（未通过）"),
+        (community ? "空宅修缮 · " : "") +
+          tasks[task].name +
+          (plan ? "" : "（未通过）"),
         pay,
         result.tokens,
       );
@@ -221,6 +237,30 @@ export function civicService(
           })
           .end(JSON.stringify(v));
       try {
+        if (route === "housing" && req.method === "GET") {
+          const first = db
+            .prepare("SELECT id FROM users WHERE name='Evan' AND id=?")
+            .get(uid);
+          if (first) tx(() => enroll(uid, true));
+          send(200, housing.listings(uid));
+          return;
+        }
+        if (
+          route.startsWith("housing/claim/") &&
+          req.method === "POST" &&
+          req.headers["content-type"] === "application/json" &&
+          (!req.headers.origin ||
+            new URL(req.headers.origin).host === req.headers.host)
+        ) {
+          const m = /^housing\/claim\/(\d+)$/.exec(route);
+          if (!m) throw Error("住宅无效");
+          tx(() => {
+            housing.claim(uid, Number(m[1]));
+            issue(uid);
+          });
+          send(200, housing.listings(uid));
+          return;
+        }
         tx(() => enroll(uid));
         if (route === "logs" || route.startsWith("gate/")) {
           send(200, await editGate(uid, route, req, state(uid)));
@@ -331,14 +371,21 @@ export function civicService(
             )
             .run(uid);
           if (!changed.changes) throw Error("完成两项任务后可接纳一位居民");
-        } else if (route === "roof" || route === "yard") {
+        } else if (
+          ["roof", "yard", "housing/roof", "housing/yard"].includes(route)
+        ) {
           let key = req.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
           const owner = db
             .prepare("SELECT name FROM users WHERE id=?")
             .get(uid);
           if (!key && designer === runDesigner && localOwner(req, owner?.name))
             key = subscriptionKey();
-          const result = await repair(uid, route, key);
+          const result = await repair(
+            uid,
+            route.endsWith("roof") ? "roof" : "yard",
+            key,
+            route.startsWith("housing/"),
+          );
           if (result.error) throw Error(result.error);
         } else {
           send(404, {});

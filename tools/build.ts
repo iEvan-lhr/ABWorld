@@ -1,3 +1,4 @@
+import { writeStartupGeometry } from "./startup-geometry.ts";
 import { sourceArchive } from "./source-archive.ts";
 import { build, context, type BuildOptions } from "esbuild";
 import {
@@ -18,6 +19,7 @@ const dev = process.argv.includes("--dev"),
   source = path.join(root, "public"),
   out = path.join(root, dev ? ".dev" : "dist");
 await mkdir(out, { recursive: true });
+await writeStartupGeometry(root);
 async function copyAssets(from: string, to: string): Promise<void> {
   await mkdir(to, { recursive: true });
   const entries = await readdir(from, { withFileTypes: true });

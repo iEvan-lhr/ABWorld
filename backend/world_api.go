@@ -68,10 +68,11 @@ func (a *api) modelChat(c echo.Context) error {
 		return fail(c, 502, "Go 订阅服务暂时无法连接")
 	}
 	defer v.Body.Close()
+	c.Response().Header().Set("X-ABWorld-Model-Upstream", "1")
 	return c.Stream(v.StatusCode, "application/json", io.LimitReader(v.Body, 8<<20))
 }
 func (a *api) houses(c echo.Context) error {
-	rows, e := a.db.Query(`SELECT no,roof,yard,resident,gate,hall,gate_style FROM citizens ORDER BY no`)
+	rows, e := a.db.Query(`SELECT no,roof,yard,resident,gate,hall,gate_style FROM citizens UNION ALL SELECT plot+1,roof,yard,0,0,0,NULL FROM housing_projects WHERE occupant IS NULL ORDER BY no`)
 	if e != nil {
 		return e
 	}
