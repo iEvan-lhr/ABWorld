@@ -5,6 +5,8 @@ RUN go mod download
 COPY backend/*.go ./
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/api .
 FROM node:24-bookworm-slim AS runtime
+RUN mkdir -p /etc/ssl/certs && node -e "require('node:fs').writeFileSync('/etc/ssl/certs/ca-certificates.crt', require('node:tls').rootCertificates.join('\n') + '\n')"
+RUN test -s /etc/ssl/certs/ca-certificates.crt
 WORKDIR /app
 COPY backend/world/ backend/world/
 COPY frontend/src/ frontend/src/
