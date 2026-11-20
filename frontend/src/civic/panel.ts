@@ -1,3 +1,4 @@
+import { repairPicker } from "./repair-picker.ts";
 import { courtyard, doorZ, type Door } from "./courtyard.ts";
 import { homeGuide } from "./home-guide.ts";
 import * as T from "three";
@@ -227,10 +228,9 @@ export function civicPanel(
       const market = await api("housing");
       const p = market.project;
       const b = el("restoreVacant") as HTMLButtonElement;
-      b.dataset.stage = p?.roof ? "yard" : "roof";
-      b.textContent = p?.roof
-        ? `完善 ${Number(p.plot) + 1} 号空宅院落 · +50 工`
-        : "修缮下一套空宅檐廊 · +30 工";
+      b.textContent = p
+        ? `继续修缮 ${Number(p.plot) + 1} 号院`
+        : "选择待修住宅";
       b.disabled = busy || !!state?.pending;
       el("vacantStatus").textContent = `可入住空宅 ${market.vacantCount} 套`;
       render();
@@ -241,6 +241,7 @@ export function civicPanel(
   async function act(route: string) {
     if (busy) return;
     busy = true;
+    (el("restoreVacant") as HTMLButtonElement).disabled = true;
     render();
     el("civicFeedback").textContent =
       route === "resident"
@@ -266,8 +267,11 @@ export function civicPanel(
       );
     }
   };
-  el("restoreVacant").onclick = () =>
-    void act("housing/" + (el("restoreVacant").dataset.stage || "roof"));
+  el("restoreVacant").onclick = repairPicker(
+    player,
+    () => api("housing/candidates"),
+    act,
+  );
   el("openCivic").onclick = () => {
     release();
     dlg.showModal();

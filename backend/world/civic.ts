@@ -150,7 +150,7 @@ export function civicService(
     uid: number,
     task: Task,
     key?: string,
-    community = false,
+    selectedPlot?: number,
   ) {
     const day = dayNumber();
     let remaining = 0,
@@ -158,8 +158,11 @@ export function civicService(
     tx(() => {
       enroll(uid);
       const s = state(uid);
-      const target = community ? housing.prepare(uid) : s.home;
-      if (community)
+      const target =
+        selectedPlot !== undefined
+          ? housing.prepare(uid, selectedPlot)
+          : s.home;
+      if (selectedPlot !== undefined)
         projectPlot = Number((target as Record<string, unknown>).plot);
       if (target[task] || s.pending || (task === "yard" && !target.roof))
         throw Error("任务已完成、正在处理，或尚未解锁");
@@ -189,7 +192,7 @@ export function civicService(
       if (plan) {
         const t = tasks[task];
         pay = t.pay;
-        if (community) {
+        if (selectedPlot !== undefined) {
           db.prepare(
             `UPDATE housing_projects SET ${task}=? WHERE plot=? AND sponsor=?`,
           ).run(JSON.stringify(plan), projectPlot, uid);
@@ -204,7 +207,7 @@ export function civicService(
       log(
         uid,
         day,
-        (community ? "空宅修缮 · " : "") +
+        (selectedPlot !== undefined ? `${selectedPlot + 1} 号院 · ` : "") +
           tasks[task].name +
           (plan ? "" : "（未通过）"),
         pay,
@@ -262,6 +265,10 @@ export function civicService(
           return;
         }
         tx(() => enroll(uid));
+        if (route === "housing/candidates" && req.method === "GET") {
+          send(200, housing.candidates(uid));
+          return;
+        }
         if (route === "logs" || route.startsWith("gate/")) {
           send(200, await editGate(uid, route, req, state(uid)));
           return;
@@ -372,7 +379,8 @@ export function civicService(
             .run(uid);
           if (!changed.changes) throw Error("完成两项任务后可接纳一位居民");
         } else if (
-          ["roof", "yard", "housing/roof", "housing/yard"].includes(route)
+          ["roof", "yard"].includes(route) ||
+          /^housing\/repair\/(\d+)\/(roof|yard)$/.test(route)
         ) {
           let key = req.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
           const owner = db
@@ -380,11 +388,15 @@ export function civicService(
             .get(uid);
           if (!key && designer === runDesigner && localOwner(req, owner?.name))
             key = subscriptionKey();
+          if (!key && designer === runDesigner)
+            throw Error("请先在设置中连接 OpenCode Go 订阅");
           const result = await repair(
             uid,
             route.endsWith("roof") ? "roof" : "yard",
             key,
-            route.startsWith("housing/"),
+            route.startsWith("housing/")
+              ? Number(route.split("/")[2])
+              : undefined,
           );
           if (result.error) throw Error(result.error);
         } else {

@@ -187,6 +187,8 @@ func run() error {
 			return next(c)
 		}
 	})
+	world := &liveWorld{peers: map[int]*livePeer{}}
+	protected.GET("/world/online", func(c echo.Context) error { return world.serve(a, c) })
 	protected.GET("/world/time", func(c echo.Context) error {
 		return c.JSON(200, map[string]any{"epoch": time.Now().UnixMilli(), "rate": 1})
 	})

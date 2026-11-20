@@ -908,3 +908,6 @@ header button {
   }
 }
 #housingEntry select{width:100%;padding:7px}#housingList{max-height:42dvh;overflow:auto}#housingList article{margin-top:9px;padding:10px;border:1px solid var(--line);background:#fffaf0}#housingList article p,#housingHint{font-size:12px}#housingList article button,#restoreVacant{background:var(--jade);color:var(--paper)}
+#repairPicker{padding:0;width:min(510px,94vw);max-height:88dvh;overflow:auto;background:var(--paper);color:var(--ink);border:1px solid var(--line);border-radius:8px}.repairChoices{padding:14px 18px}.repairChoices label{display:grid;gap:4px;margin-top:9px}.repairChoices select{width:100%}#repairMap{height:185px;width:100%;border-radius:5px;cursor:crosshair}#repairDetails{font-size:13px;line-height:1.55}
+
+#onlineCount{color:#286c68;font-size:11px}#atlasPlayers{max-width:120px;font-size:12px}@media(max-width:620px){#atlasPlayers{max-width:88px}}

@@ -1,3 +1,4 @@
+import { connectPlayers } from "./online.ts";
 import { currentSave } from "./account.ts";
 import { loadCharacter } from "./player/character.ts";
 import { walkPose } from "./player/pose.ts";
@@ -1539,6 +1540,7 @@ function draw(now: number) {
   setCamera();
   focus.update(now);
   updatePeople(now, dt);
+  updateOnline(now, dt);
   if (waiting) status.hidden = false;
   drawVisibility(now);
   if (ready) document.body.dataset.ready = "yes";
@@ -1793,6 +1795,36 @@ const civic = civicPanel(
       throw e;
     }
   },
+);
+const updateOnline = connectPlayers(
+  actorScene,
+  player,
+  () => ready,
+  async (id) => {
+    const owner = { refs: new Set<string>() };
+    try {
+      const rig = await createRig(
+        3,
+        1.7,
+        "#cba382",
+        "#687e79",
+        "#c9af84",
+        owner,
+        true,
+      );
+      return {
+        rig,
+        release: () => {
+          discardRig(rig);
+          release(owner);
+        },
+      };
+    } catch (e) {
+      release(owner);
+      throw e;
+    }
+  },
+  animateRig,
 );
 const updateMap = minimap(player);
 const settingsOpen = modelSettings(() => {

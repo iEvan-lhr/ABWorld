@@ -6,23 +6,63 @@ export function housingMarket(
   db.exec(
     `CREATE TABLE IF NOT EXISTS housing_projects(plot INTEGER PRIMARY KEY,sponsor INTEGER NOT NULL,roof TEXT,yard TEXT,occupant INTEGER UNIQUE,claimed_at TEXT);CREATE UNIQUE INDEX IF NOT EXISTS one_unfinished_per_sponsor ON housing_projects(sponsor) WHERE yard IS NULL`,
   );
-  function prepare(uid: number) {
-    const current = db
+  function candidates(uid: number) {
+    const projects = db
       .prepare(
-        "SELECT * FROM housing_projects WHERE sponsor=? AND yard IS NULL",
+        "SELECT plot,sponsor,roof IS NOT NULL AS roof,yard IS NOT NULL AS yard FROM housing_projects",
       )
-      .get(uid);
-    if (current) return current;
-    const used = new Set(
+      .all();
+    const occupied = new Set(
       db
-        .prepare(
-          "SELECT no-1 AS plot FROM citizens UNION SELECT plot FROM housing_projects",
-        )
+        .prepare("SELECT no-1 AS plot FROM citizens")
         .all()
         .map((r) => Number(r.plot)),
     );
-    const plot = plots.findIndex((_, i) => i > 0 && !used.has(i));
-    if (plot < 0) throw Error("当前可修缮的宅地已用完");
+    const reserved = new Map(projects.map((p) => [Number(p.plot), p]));
+    const mine = projects.find((p) => p.sponsor === uid && !p.yard);
+    return plots.flatMap((p, id) => {
+      const project = reserved.get(id);
+      if (
+        id === 0 ||
+        occupied.has(id) ||
+        (mine && mine.plot !== id) ||
+        (project && (project.sponsor !== uid || project.yard))
+      )
+        return [];
+      return [
+        {
+          id,
+          x: p.x,
+          z: p.z,
+          district: p.x < 0 ? "城西" : "城东",
+          quarter: p.z < 0 ? "北坊" : "南坊",
+          mine: !!project,
+          stage: project?.roof ? "yard" : "roof",
+        },
+      ];
+    });
+  }
+  // Called under the same BEGIN IMMEDIATE as task reservation.
+  function prepare(uid: number, plot: number) {
+    if (!Number.isSafeInteger(plot) || plot <= 0 || plot >= plots.length)
+      throw Error("请选择有效的待修缮住宅");
+    if (db.prepare("SELECT no FROM citizens WHERE no=?").get(plot + 1))
+      throw Error("这套住宅已有人入住，请重新选房");
+    const selected = db
+      .prepare("SELECT * FROM housing_projects WHERE plot=?")
+      .get(plot);
+    if (selected) {
+      if (selected.yard) throw Error("这套住宅已修缮完毕，请重新选房");
+      if (selected.sponsor !== uid)
+        throw Error("这套住宅已被其他公民接取，请重新选房");
+      return selected;
+    }
+    const current = db
+      .prepare(
+        "SELECT plot FROM housing_projects WHERE sponsor=? AND yard IS NULL",
+      )
+      .get(uid);
+    if (current) throw Error(`请先完成 ${Number(current.plot) + 1} 号院的修缮`);
     db.prepare("INSERT INTO housing_projects(plot,sponsor) VALUES(?,?)").run(
       plot,
       uid,
@@ -95,5 +135,5 @@ export function housingMarket(
       h.yard,
     );
   }
-  return { prepare, listings, claim };
+  return { prepare, listings, claim, candidates };
 }

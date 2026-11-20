@@ -47,10 +47,25 @@ test("only a fully restored vacant home admits one waiting player and grants the
   try {
     assert.equal((await call(2, "state")).status, 409);
     assert.deepEqual((await (await call(2, "housing")).json()).homes, []);
-    assert.equal((await call(1, "housing/roof", true)).status, 200);
-    assert.equal((await call(2, "housing/claim/1", true)).status, 409);
-    assert.equal((await call(1, "housing/yard", true)).status, 200);
+    const candidates = await (await call(1, "housing/candidates")).json();
+    const plot = candidates[5].id;
+    assert.equal((await call(1, "housing/roof", true)).status, 404);
+    assert.equal((await call(1, "housing/repair/0/roof", true)).status, 409);
+    assert.equal(
+      (await call(1, `housing/repair/${plot}/roof`, true)).status,
+      200,
+    );
+    assert.equal(
+      (await call(1, `housing/repair/${candidates[2].id}/yard`, true)).status,
+      409,
+    );
+    assert.equal((await call(2, `housing/claim/${plot}`, true)).status, 409);
+    assert.equal(
+      (await call(1, `housing/repair/${plot}/yard`, true)).status,
+      200,
+    );
     const [h] = (await (await call(2, "housing")).json()).homes;
+    assert.equal(h.id, plot);
     assert.equal(h.sponsor, "Evan");
     assert.equal(service.state(1).spent, 34);
     assert.equal(service.state(1).balance, 130);
@@ -66,6 +81,21 @@ test("only a fully restored vacant home admits one waiting player and grants the
     assert.equal(service.state(winner).balance, 50);
     assert.equal(service.state(winner).home.id, h.id);
     assert.deepEqual((await (await call(winner, "housing")).json()).homes, []);
+    const next = candidates.find((p: { id: number }) => p.id !== plot).id;
+    const reservations = await Promise.all(
+      [1, winner].map((uid) => call(uid, `housing/repair/${next}/roof`, true)),
+    );
+    assert.deepEqual(reservations.map((r) => r.status).sort(), [200, 409]);
+    const repairer = reservations[0].ok ? 1 : winner,
+      other = repairer === 1 ? winner : 1;
+    assert.equal(
+      (await call(other, `housing/repair/${next}/yard`, true)).status,
+      409,
+    );
+    assert.equal(
+      (await call(repairer, `housing/repair/${next}/yard`, true)).status,
+      200,
+    );
   } finally {
     srv.closeAllConnections();
     await new Promise<void>((r) => srv.close(() => r()));

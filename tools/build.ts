@@ -175,6 +175,47 @@ if (dev) {
   process.stdin.resume();
   if (process.env.ABWORLD_PARENT_STDIN === "1")
     process.stdin.on("end", () => process.exit(0));
+  server.on("upgrade", (req, socket, head) => {
+    if (req.url !== "/api/world/online") {
+      socket.destroy();
+      return;
+    }
+    const endpoint = new URL(
+      req.url,
+      process.env.ABWORLD_API_URL || "http://127.0.0.1:8787",
+    );
+    const upstream = httpRequest(endpoint, {
+      headers: {
+        host: req.headers.host,
+        origin: req.headers.origin ?? "",
+        cookie: req.headers.cookie ?? "",
+        upgrade: "websocket",
+        connection: "Upgrade",
+        "sec-websocket-version": "13",
+        "sec-websocket-key": req.headers["sec-websocket-key"] ?? "",
+      },
+    });
+    upstream.on("upgrade", (response, remote, rest) => {
+      socket.write(
+        "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: " +
+          response.headers["sec-websocket-accept"] +
+          "\r\n\r\n",
+      );
+      if (head.length) remote.write(head);
+      if (rest.length) socket.write(rest);
+      remote.on("error", () => socket.destroy());
+      socket.on("error", () => remote.destroy());
+      socket.on("close", () => remote.destroy());
+      remote.on("close", () => socket.destroy());
+      socket.pipe(remote).pipe(socket);
+    });
+    upstream.on("response", (r) => {
+      r.resume();
+      socket.destroy();
+    });
+    upstream.on("error", () => socket.destroy());
+    upstream.end();
+  });
   const host = process.env.HOST || "127.0.0.1";
   const configuredPort = process.env.PORT;
   let port = Number(configuredPort ?? 5173);

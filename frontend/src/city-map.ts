@@ -1,3 +1,4 @@
+import { onlinePlayers } from "./online.ts";
 import { paintHome } from "./civic/home-guide.ts";
 import atlas from "./data/minimap.json";
 import overview from "./data/city-overview.json";
@@ -46,6 +47,20 @@ export function cityMap(
       g.fillText(r.name, x(px), y(pz));
     }
     paintHome(g, x, y, true);
+    for (const p of onlinePlayers.values()) {
+      const px = x(p.x),
+        py = y(p.z);
+      g.beginPath();
+      g.arc(px, py, 4, 0, Math.PI * 2);
+      g.fillStyle = "#1d7378";
+      g.fill();
+      g.strokeStyle = "#fff7e8";
+      g.lineWidth = 2;
+      g.stroke();
+      g.textAlign = "left";
+      g.strokeText(p.name, px + 7, py + 4);
+      g.fillText(p.name, px + 7, py + 4);
+    }
     g.save();
     g.translate(x(player.x), y(player.z));
     g.rotate(Math.PI - player.angle);
@@ -63,6 +78,36 @@ export function cityMap(
     g.restore();
   }
   window.addEventListener("home-route", draw);
+  const peers = document.getElementById("atlasPlayers") as HTMLSelectElement;
+  let ids = "";
+  function populate() {
+    if (!dialog.open) return;
+    const signature = [...onlinePlayers.values()]
+      .map((p) => p.id + " " + p.name)
+      .sort()
+      .join("/");
+    if (signature !== ids) {
+      ids = signature;
+      peers.replaceChildren(
+        new Option("定位在线玩家", ""),
+        ...[...onlinePlayers.values()].map(
+          (p) => new Option(p.name, String(p.id)),
+        ),
+      );
+    }
+    draw();
+  }
+  peers.onchange = () => {
+    const p = onlinePlayers.get(Number(peers.value));
+    if (p) {
+      cx = p.x;
+      cz = p.z;
+      zoom = 8;
+      draw();
+    }
+    peers.value = "";
+  };
+  window.addEventListener("online-change", populate);
   image.onload = draw;
   image.src = overview;
   new ResizeObserver(draw).observe(canvas);
@@ -110,6 +155,7 @@ export function cityMap(
     cz = 448;
     zoom = 1;
     dialog.showModal();
+    populate();
     draw();
   }
   document.getElementById("atlasOpen")!.onclick = toggle;

@@ -7,6 +7,15 @@ root /usr/share/nginx/html;
 index index.html;
 client_max_body_size 64k;
 location = /api/health { proxy_pass http://abworld_api; }
+location = /api/world/online {
+  proxy_http_version 1.1;
+  proxy_set_header Host $http_host;
+  proxy_set_header Upgrade $http_upgrade;
+  proxy_set_header Connection "upgrade";
+  proxy_buffering off;
+  proxy_read_timeout 150s;
+  proxy_pass http://abworld_api;
+}
 location /api/ {
   if ($scheme = http) { return 308 https://$host$request_uri; }
   proxy_http_version 1.1;
