@@ -1,3 +1,4 @@
+import { sourceArchive } from "./source-archive.ts";
 import { build, context, type BuildOptions } from "esbuild";
 import {
   mkdir,
@@ -9,7 +10,7 @@ import {
 } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { once } from "node:events";
-import { createServer } from "node:http";
+import { request as httpRequest, createServer } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -32,7 +33,7 @@ async function copyAssets(from: string, to: string): Promise<void> {
     );
 }
 const options: BuildOptions = {
-  entryPoints: [path.join(root, "src/main.ts")],
+  entryPoints: [path.join(root, "frontend/src/entry.ts")],
   bundle: true,
   format: "iife",
   minify: !dev,
@@ -48,7 +49,7 @@ const options: BuildOptions = {
           namespace: "worker",
         }));
         ctx.onLoad({ filter: /.*/, namespace: "worker" }, async () => {
-          const file = path.join(root, "src/decoder.worker.ts");
+          const file = path.join(root, "frontend/src/decoder.worker.ts");
           const result = await build({
             entryPoints: [file],
             bundle: true,
@@ -59,22 +60,33 @@ const options: BuildOptions = {
           return {
             contents: `export default ${JSON.stringify(result.outputFiles[0].text)}`,
             loader: "js",
-            watchFiles: [file, path.join(root, "index.html")],
+            watchFiles: [
+              file,
+              path.join(root, "frontend/index.html"),
+              path.join(root, "frontend/hud.css"),
+            ],
           };
         });
         ctx.onEnd(async (result) => {
           if (result.errors.length || !result.outputFiles) return;
+          await sourceArchive(root);
           const template = await readFile(
-              path.join(root, "index.html"),
+              path.join(root, "frontend/index.html"),
               "utf8",
             ),
             code = result.outputFiles[0].text.replace(
               /<\/script/gi,
               "<\\/script",
             );
+          const theme = await readFile(
+            path.join(root, "frontend/hud.css"),
+            "utf8",
+          );
           await writeFile(
             path.join(out, "index.html"),
-            template.replace("/*BUNDLE*/", () => code),
+            template
+              .replace("/*HUD_THEME*/", () => theme)
+              .replace("/*BUNDLE*/", () => code),
           );
         });
       },
@@ -90,6 +102,46 @@ if (dev) {
       const name = decodeURIComponent(
         new URL(req.url ?? "/", "http://localhost").pathname,
       );
+      if (name.startsWith("/api/")) {
+        const local = ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(
+          req.socket.remoteAddress ?? "",
+        );
+        const headers = { ...req.headers };
+        for (const h of Object.keys(headers))
+          if (
+            h.startsWith("x-world-") ||
+            h === "connection" ||
+            h.startsWith("x-forwarded-")
+          )
+            delete headers[h];
+        headers["x-world-front"] =
+          process.env.ABWORLD_FRONT_SECRET ||
+          (await readFile(path.join(root, ".dev", "proxy.key"), "utf8").catch(
+            () => "",
+          )) ||
+          "separate";
+        headers["x-world-front-local"] = local ? "1" : "0";
+        const endpoint = new URL(
+          req.url ?? "/",
+          process.env.ABWORLD_API_URL || "http://127.0.0.1:8787",
+        );
+        const forwarded = httpRequest(
+          endpoint,
+          { method: req.method, headers },
+          (up) => {
+            res.writeHead(up.statusCode ?? 502, up.headers);
+            up.pipe(res);
+          },
+        );
+        forwarded.on("error", () => {
+          if (!res.headersSent)
+            res
+              .writeHead(502, { "Content-Type": "application/json" })
+              .end(JSON.stringify({ error: "Go 后端尚未连接" }));
+        });
+        req.pipe(forwarded);
+        return;
+      }
       const filename =
         name === "/" || name === "/index.html"
           ? path.join(out, "index.html")
@@ -118,7 +170,10 @@ if (dev) {
       res.writeHead(404).end();
     }
   });
-  const host = "127.0.0.1";
+  process.stdin.resume();
+  if (process.env.ABWORLD_PARENT_STDIN === "1")
+    process.stdin.on("end", () => process.exit(0));
+  const host = process.env.HOST || "127.0.0.1";
   const configuredPort = process.env.PORT;
   let port = Number(configuredPort ?? 5173);
   try {
@@ -130,7 +185,9 @@ if (dev) {
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "EADDRINUSE") throw error;
         if (configuredPort !== undefined) {
-          throw new Error(`指定的 PORT=${port} 已被占用，请更换端口或清除 PORT 后重试。`);
+          throw new Error(
+            `指定的 PORT=${port} 已被占用，请更换端口或清除 PORT 后重试。`,
+          );
         }
         if (port === 65535) throw new Error("没有找到可用的开发端口。");
         console.log(`端口 ${port} 已被占用，尝试 ${port + 1}。`);
@@ -143,7 +200,10 @@ if (dev) {
     }
   } catch (error) {
     await buildContext.dispose();
-    console.error("开发预览启动失败。", error instanceof Error ? error.message : error);
+    console.error(
+      "开发预览启动失败。",
+      error instanceof Error ? error.message : error,
+    );
     process.exitCode = 1;
   }
 } else {

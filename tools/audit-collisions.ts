@@ -8,7 +8,7 @@ import {
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync, gunzipSync } from "node:zlib";
-import type { PackedGeometry, TilePacket } from "../src/types.ts";
+import type { PackedGeometry, TilePacket } from "../frontend/src/types.ts";
 
 const project = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -64,7 +64,7 @@ for (const name of readdirSync(path.join(root, "geometry"))) {
   });
 }
 const materials = JSON.parse(
-  readFileSync(path.join(project, "src/data/stream-map.json"), "utf8"),
+  readFileSync(path.join(project, "frontend/src/data/stream-map.json"), "utf8"),
 ).materials as { name: string }[];
 const records = new Map<string, number[]>(),
   counts: Record<string, number> = {},

@@ -1,0 +1,571 @@
+/* Shared surfaces and type for the game HUD and overlay panels. */
+:root {
+  --paper: #f8f4e9;
+  --soft: #eee9da;
+  --ink: #203b32;
+  --muted: #56675c;
+  --jade: #294e40;
+  --brass: #a17c48;
+  --line: #cbc3ae;
+  --hud-edge: clamp(10px, 1.1vw, 22px);
+  --shadow: 0 6px 25px #192a2230;
+  --serif: "Songti SC", SimSun, serif;
+}
+body {
+  font-family: Inter, "Microsoft YaHei", sans-serif;
+  color: var(--ink);
+}
+button,
+select,
+input,
+textarea {
+  font-family: inherit;
+}
+button {
+  transition:
+    background-color 0.14s,
+    color 0.14s;
+}
+button:enabled:hover {
+  background-color: #dce3d6;
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid #997642;
+  outline-offset: 2px;
+}
+button:disabled {
+  cursor: default;
+}
+#openStudio,
+#navStart,
+.cta,
+#authSubmit,
+#gateApply {
+  background: var(--jade);
+  color: #fff9e9;
+}
+#openStudio:hover,
+#navStart:hover,
+.cta:hover,
+#authSubmit:hover,
+#gateApply:hover {
+  background: #426654;
+}
+#gateEdit,
+#logDialog,
+#studio,
+#atlasDialog,
+#civicDialog,
+#manageAccess,
+#workshop,
+#characterPanel,
+.gateCard {
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  box-shadow: var(--shadow);
+}
+dialog::backdrop,
+#studio::backdrop,
+#atlasDialog::backdrop,
+#civicDialog::backdrop {
+  background: #15251ed1;
+}
+dialog {
+  overscroll-behavior: contain;
+}
+dialog h2,
+#workshop h2,
+#characterPanel h2 {
+  font: 600 22px var(--serif);
+  margin: 0;
+}
+dialog h3,
+#workshop h3,
+#characterPanel h3 {
+  font: 600 16px var(--serif);
+  letter-spacing: 0.04em;
+}
+dialog button,
+#workshop button,
+#characterPanel button {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 13px;
+  padding: 7px 10px;
+}
+dialog :is(input, select, textarea),
+#workshop :is(input, select) {
+  background: #fffdf5;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 8px;
+  color: var(--ink);
+  max-width: 100%;
+  font: inherit;
+}
+dialog textarea {
+  resize: vertical;
+}
+dialog p[role="status"]:empty {
+  display: none;
+}
+.dialogTop,
+.studioHead,
+#civicDialog > .shopHead,
+#manageAccess > .shopHead,
+#workshop > .shopHead,
+#characterPanel > .shopHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  background: var(--jade);
+  color: #fff8e6;
+}
+.dialogTop button,
+.studioHead button,
+#civicDialog > .shopHead button,
+#manageAccess > .shopHead button,
+#workshop > .shopHead button,
+#characterPanel > .shopHead button {
+  border: 1px solid #9cae975c !important;
+  background: transparent;
+  color: #fff6df;
+}
+.dialogTop button:hover,
+.studioHead button:hover,
+.shopHead button:hover {
+  background: #577564 !important;
+}
+#manageAccess > .shopHead,
+#workshop > .shopHead,
+#characterPanel > .shopHead,
+#civicDialog > .shopHead {
+  margin: -16px -16px 15px;
+}
+.gateCard {
+  padding: 28px;
+  border-top: 4px solid var(--brass);
+}
+.gateCard h1 {
+  letter-spacing: 0.08em;
+}
+.gateCard input {
+  border-radius: 4px;
+}
+.gateCard a,
+dialog a {
+  color: #456253;
+}
+#authMode {
+  margin-top: 7px;
+  color: var(--jade);
+}
+/* Status and controls occupy opposite corners, with the centre reserved for the scene. */
+body > header {
+  position: fixed;
+  inset: var(--hud-edge) var(--hud-edge) auto auto;
+  width: max-content;
+  max-width: calc(100vw - 265px);
+  padding: 6px;
+  gap: 4px;
+  background: #f8f4e9f4;
+  border-radius: 6px;
+  box-shadow: var(--shadow);
+}
+body > header nav {
+  padding-right: 5px;
+  border-right: 1px solid var(--line);
+}
+header button {
+  border-radius: 4px;
+  min-height: 31px;
+}
+#accountName {
+  margin: 0 4px;
+  font-weight: 600;
+}
+#vitals {
+  position: fixed;
+  inset: var(--hud-edge) auto auto var(--hud-edge);
+  width: 202px;
+  padding: 10px 12px;
+  background: #f8f4e9f2;
+  border-radius: 7px;
+  box-shadow: var(--shadow);
+}
+#vitals .cityBrand {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px;
+  border: 0;
+  padding: 0 0 6px;
+}
+#vitals .cityBrand h1 {
+  font: 600 20px var(--serif);
+  letter-spacing: 0.09em;
+}
+#civicEnergy {
+  display: block;
+  padding: 3px 0;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+#vitalBars label {
+  grid-template-columns: 30px 1fr 27px;
+}
+#vitals aside {
+  display: block;
+  position: static;
+  margin: 7px 0 4px;
+  border-top: 1px solid var(--line);
+  padding: 6px 0 0;
+  font-size: 10px;
+  line-height: 1.5;
+  background: none;
+  color: var(--muted);
+}
+#vitals #bagOpen {
+  margin: 2px 0 0;
+  border: 0;
+  background: #e1e6d9;
+  text-align: left;
+}
+#bagOpen kbd {
+  float: right;
+}
+#status,
+#saveStatus {
+  top: 225px;
+  left: var(--hud-edge);
+}
+#miniMap,
+#miniMap.collapsed {
+  position: fixed;
+  top: auto;
+  left: auto;
+  right: var(--hud-edge);
+  bottom: var(--hud-edge);
+  border-radius: 7px;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+}
+#quickbar {
+  bottom: var(--hud-edge);
+}
+#slots {
+  border-radius: 5px;
+  background: #26392ee8;
+  border-color: #a89977;
+}
+#slots button {
+  border-radius: 2px;
+}
+#slotHint {
+  border-radius: 3px;
+}
+#navHud {
+  top: 68px;
+}
+#focusHud {
+  max-width: 90vw;
+  text-align: center;
+  border-radius: 5px;
+}
+#workshop,
+#characterPanel {
+  position: fixed;
+  width: min(330px, calc(100vw - 20px));
+  padding: 16px;
+  overflow: auto;
+  max-height: calc(100dvh - 82px);
+  z-index: 8;
+}
+#workshop {
+  inset: 66px var(--hud-edge) auto auto;
+}
+#workshop .speed {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+#workshop .speed input {
+  flex: 1;
+  min-width: 70px;
+  width: auto;
+  padding: 0;
+}
+#characterPanel {
+  inset: var(--hud-edge) auto auto calc(var(--hud-edge) + 210px);
+}
+#inventoryList li {
+  padding: 10px 0;
+}
+#attributeList span {
+  border-radius: 4px;
+}
+#civicDialog,
+#manageAccess {
+  padding: 16px;
+  max-height: 86dvh;
+  overflow: auto;
+}
+#wallet,
+#tokenRecord {
+  padding: 9px 12px;
+  margin: 6px 0;
+  background: var(--soft);
+  border-radius: 4px;
+}
+#accountNumber {
+  display: block;
+  margin-bottom: 7px;
+}
+#civicLedger {
+  line-height: 1.8;
+  color: var(--muted);
+}
+.studioGrid {
+  gap: 18px;
+}
+.studioGrid > div {
+  background: var(--soft);
+  padding: 12px;
+  border-radius: 5px;
+}
+.studioGrid label {
+  font-weight: 500;
+}
+#sceneContext {
+  color: var(--muted);
+  margin-top: 12px;
+}
+#studioGateEdit {
+  margin: 12px 20px 0;
+  background: var(--jade);
+  color: white;
+}
+#designPlan,
+#turntable {
+  border-radius: 4px;
+}
+.atlasToolbar {
+  background: var(--jade);
+  color: var(--paper);
+}
+.atlasToolbar button {
+  border-color: #829887;
+  color: inherit;
+}
+.atlasToolbar button:hover {
+  background: #56715b;
+}
+#gateEdit,
+#logDialog {
+  padding: 0;
+  width: min(650px, 94vw);
+  max-height: 88dvh;
+  overflow: auto;
+}
+.gateGrid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 16px;
+  padding: 16px;
+}
+#gatePreview {
+  width: 100%;
+  height: 265px;
+  border-radius: 5px;
+  pointer-events: none;
+}
+#gateEdit label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  margin: 0 0 7px;
+}
+.gateFields button {
+  margin: 2px 2px 0 0;
+}
+#gateEdit footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+}
+#gateNote {
+  font-size: 12px;
+  color: var(--muted);
+}
+#logList {
+  padding: 16px;
+}
+#logList article + article {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+#logList p {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 920px) {
+  #miniMap {
+    width: 142px;
+  }
+  #characterPanel {
+    left: var(--hud-edge);
+  }
+  #pad {
+    right: var(--hud-edge);
+    bottom: 220px;
+  }
+  body > header {
+    max-width: calc(100vw - 225px);
+  }
+  #focusTouch {
+    bottom: 65px;
+  }
+}
+@media (max-width: 620px) {
+  :root {
+    --hud-edge: 8px;
+  }
+  body > header {
+    max-width: calc(100vw - 153px);
+    justify-content: flex-end;
+    gap: 1px;
+    padding: 4px;
+  }
+  header button {
+    padding: 4px 5px;
+    font-size: 11px;
+    min-height: 27px;
+  }
+  body > header nav {
+    padding: 0;
+    border: 0;
+  }
+  #vitals {
+    width: 135px;
+    padding: 7px;
+  }
+  #vitals .cityBrand {
+    flex-wrap: wrap;
+    gap: 0;
+  }
+  #vitals .cityBrand h1 {
+    font-size: 17px;
+  }
+  #vitals .cityBrand time {
+    font-size: 9px;
+  }
+  #vitals aside {
+    display: none;
+  }
+  #vitalBars label {
+    grid-template-columns: 27px 1fr 23px;
+    font-size: 11px;
+    line-height: 17px;
+  }
+  #miniMap {
+    width: 110px;
+    bottom: 89px;
+  }
+  #miniMap .mapBar {
+    padding: 2px 3px;
+  }
+  .mapBar strong {
+    font-size: 12px;
+  }
+  .mapBar button {
+    font-size: 10px;
+    padding: 2px;
+  }
+  #pad {
+    bottom: 92px;
+    left: 8px;
+    right: auto;
+  }
+  #workshop,
+  #characterPanel {
+    inset: 20px 10px auto auto;
+    max-height: 87dvh;
+  }
+  #navHud {
+    top: 153px;
+  }
+  #status,
+  #saveStatus {
+    top: 160px;
+  }
+  #focusHud {
+    bottom: 78px;
+    font-size: 12px;
+  }
+  #focusTouch {
+    left: 8px;
+    bottom: 58px;
+    transform: none;
+    font-size: 10px;
+    padding: 3px;
+  }
+  .studioGrid {
+    grid-template-columns: 1fr;
+    padding: 12px;
+  }
+  #studio,
+  #gateEdit,
+  #civicDialog,
+  #atlasDialog,
+  #manageAccess {
+    max-height: 90dvh;
+  }
+  .gateGrid {
+    grid-template-columns: 1fr;
+    padding: 12px;
+    gap: 10px;
+  }
+  #gatePreview {
+    height: 165px;
+  }
+  .gateFields label {
+    font-size: 11px;
+  }
+  #quickbar {
+    width: min(96vw, 420px);
+  }
+  #slots button {
+    width: auto;
+    flex: 1;
+    min-width: 0;
+    height: 40px;
+  }
+  #slotHint {
+    font-size: 10px;
+  }
+  .atlasToolbar {
+    flex-wrap: wrap;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  button,
+  input {
+    transition: none;
+  }
+}
+
+#slotHint:empty { display: none; }
+#quickCreate,#placeDialog,#regionDialog{padding:0;width:min(440px,94vw);max-height:88dvh;overflow:auto;background:var(--paper);border:1px solid var(--line);border-radius:8px;color:var(--ink)}#quickForm,.regionFields,.creationActions{padding:12px 17px}.creationActions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}#quickCreate label,.regionFields label{display:grid;gap:5px;margin:4px 0 10px;font-size:13px}#quickPreview:not(:empty){padding:0 17px}#quickPreview #turntable{height:155px}.coordGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 8px}.coordGrid input{min-width:0}.regionFields p,#quickNote{font-size:12px}.regionFields #placeRange{font-variant-numeric:tabular-nums}#quickOpen{margin:12px 20px 0}#quickCreate button.cta,#regionDialog button.cta,#placeDialog button.cta{background:var(--jade);color:white}

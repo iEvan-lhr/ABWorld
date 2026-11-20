@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { covers, CrowdCollisions } from "../src/physics/collision.ts";
+import { covers, CrowdCollisions } from "../frontend/src/physics/collision.ts";
 
 test("rotated thin fence blocks the fence line and leaves adjacent space free", () => {
   const a = new Float32Array([0, 3, 1, 0, 1, 2, 0.05, 0, 1.6, 0]);

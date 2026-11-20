@@ -1,3 +1,12 @@
+import { gateEditor, generationLog } from "./civic/gate-editor.ts";
+import { focusMode } from "./civic/focus.ts";
+import { studio } from "./civic/studio.ts";
+import { civicPanel } from "./civic/panel.ts";
+import { cityMap } from "./city-map.ts";
+import { characterPanel } from "./player/interface.ts";
+import { minimap } from "./minimap.ts";
+import { modelSettings } from "./model-settings.ts";
+import { terrainHeight } from "./workshop/site.ts";
 import { element } from "./types.ts";
 import type {
   Bytes,
@@ -712,6 +721,7 @@ async function streamTile(key: string) {
     grid: new Map(),
     key,
   };
+  tile.group.userData.tile = key;
   pending.add(key);
   try {
     const d = await readPacket("tiles", key);
@@ -756,7 +766,7 @@ async function streamTile(key: string) {
       d.b.map(async ([id, mid, data]) => {
         const g = await shared(id, tile),
           m = await getMat(mid, !!g.attributes.color, tile);
-        return { g, m, data };
+        return { g, m, data, mid };
       }),
     );
     const direct = await Promise.all(
@@ -766,7 +776,7 @@ async function streamTile(key: string) {
       })),
     );
     let deadline = performance.now() + 5;
-    for (const { g, m, data } of batches) {
+    for (const [batchIndex, { g, m, data, mid }] of batches.entries()) {
       if (!wanted.has(key)) return;
       const v = decodeFloats(data),
         mesh = new T.InstancedMesh(g, m, v.length / 15);
@@ -794,13 +804,19 @@ async function streamTile(key: string) {
         );
         mesh.setColorAt(j, new T.Color(v[i + 12], v[i + 13], v[i + 14]));
       }
+      mesh.userData = {
+        asset: `city:${key}:b:${batchIndex}`,
+        batch: true,
+        display:
+          (rawMap.materials[mid] as { name?: string }).name || "街区构件",
+      };
       tile.group.add(mesh);
       if (performance.now() > deadline) {
         await frame();
         deadline = performance.now() + 5;
       }
     }
-    for (const { data, mat } of direct) {
+    for (const [geoIndex, { data, mat }] of direct.entries()) {
       if (!wanted.has(key)) return;
       const g = new T.BufferGeometry();
       g.setAttribute(
@@ -818,7 +834,13 @@ async function streamTile(key: string) {
         new T.BufferAttribute(new Uint32Array(from64(data.i).buffer), 1),
       );
       tile.own.push(g);
-      tile.group.add(new T.Mesh(g, mat));
+      const item = new T.Mesh(g, mat);
+      item.userData = {
+        asset: `city:${key}:g:${geoIndex}:0`,
+        display:
+          (rawMap.materials[data.mat] as { name?: string }).name || "地表",
+      };
+      tile.group.add(item);
       if (performance.now() > deadline) {
         await frame();
         deadline = performance.now() + 5;
@@ -915,21 +937,6 @@ function pointBoxes(x: number, z: number): [Float32Array, number[]] | null {
       ]
     : null;
 }
-function terrainHeight(x: number, z: number) {
-  const u = x / (1398 / 246) + 535,
-    v = z / (1398 / 246) + 850,
-    t = (v - 145) / 264;
-  if (t <= 0 || t >= 1) return 0.09;
-  return Math.max(
-    0.09,
-    T.MathUtils.smoothstep(4100 - Math.abs(x), 0, 350) *
-      Math.sin(Math.PI * t) ** 2 *
-      (102 +
-        35 * Math.cos(u * 0.016 + v * 0.012) +
-        22 * Math.sin(u * 0.035 - v * 0.018)) -
-      0.046,
-  );
-}
 let waiting = false;
 function support(x: number, z: number, y: number) {
   if (Math.abs(x) > 4050 || z < -3720 || z > 4630) return null;
@@ -942,6 +949,8 @@ function support(x: number, z: number, y: number) {
   const [a, ids] = query;
   const floor = resolveSupport(a, ids, x, z, y, terrainHeight(x, z));
   return floor === null ||
+    civic.blocks(x, z, floor) ||
+    creations.blocks(x, z, floor) ||
     crowdCollision.blocksMove(player.x, player.z, x, z, floor, 0.31, 1.7)
     ? null
     : floor;
@@ -1370,7 +1379,7 @@ async function requirePlayer() {
 function setMode(first: boolean) {
   if (!first) releaseLook();
   player.first = first;
-  refreshLookHint();
+  syncPointerCursor();
   element("#first").setAttribute("aria-pressed", String(first));
   element("#third").setAttribute("aria-pressed", String(!first));
   if (!first) requirePlayer();
@@ -1453,7 +1462,8 @@ function draw(now: number) {
   const forward = axis("KeyW", "KeyS") + axis("ArrowUp", "ArrowDown"),
     strafe = axis("KeyD", "KeyA"),
     size = Math.hypot(forward, strafe);
-  const run = keys.has("ShiftLeft") || keys.has("ShiftRight");
+  const run =
+    character.canRun() && (keys.has("ShiftLeft") || keys.has("ShiftRight"));
   let moved = 0;
   if (size && ready) {
     const sx = Math.sin(player.angle),
@@ -1471,7 +1481,19 @@ function draw(now: number) {
     player.rig.root.rotation.y = player.face;
     animateRig(player.rig, player.action, player.phase);
   }
+  if (
+    ready &&
+    !creations.open() &&
+    !civic.open() &&
+    !atlas.open() &&
+    !character.open() &&
+    !settingsOpen()
+  )
+    character.advance(dt, moved > 0, run);
+  civic.update(now);
+  updateMap(now);
   setCamera();
+  focus.update(now);
   updatePeople(now, dt);
   if (waiting) status.hidden = false;
   drawVisibility(now);
@@ -1505,6 +1527,46 @@ window.addEventListener("keydown", (e) => {
     (e.target === speedControl && e.code.startsWith("Arrow"))
   )
     return;
+  if (
+    creations.open() ||
+    civic.open() ||
+    settingsOpen() ||
+    e.target instanceof HTMLInputElement ||
+    e.target instanceof HTMLTextAreaElement ||
+    e.target instanceof HTMLSelectElement
+  )
+    return;
+  if (e.code === "KeyM") {
+    e.preventDefault();
+    if (!e.repeat) atlas.toggle();
+    return;
+  }
+  if (atlas.open()) return;
+  if (e.code === "KeyB") {
+    e.preventDefault();
+    if (!e.repeat) character.toggle();
+    return;
+  }
+  if (character.open() || document.querySelector("dialog[open]")) return;
+  if (e.code === "KeyE") {
+    if (!e.repeat) focus.down();
+    e.preventDefault();
+    return;
+  }
+  if (!e.repeat && focus.command(e.code)) {
+    e.preventDefault();
+    return;
+  }
+  if (/^Digit[1-9]$/.test(e.code)) {
+    e.preventDefault();
+    character.belt.select(Number(e.code.slice(5)) - 1);
+    return;
+  }
+  if (e.code === "KeyF") {
+    e.preventDefault();
+    if (!e.repeat) character.belt.activate();
+    return;
+  }
   if (e.code === "KeyV") {
     e.preventDefault();
     if (!e.repeat) setMode(!player.first);
@@ -1524,19 +1586,14 @@ document.addEventListener("visibilitychange", () => {
   last = 0;
 });
 // Mouse lock starts with an explicit click. Touchscreens and restricted embeds support drag-look.
-const lookHint = element("#lookHint");
+
 let lockPending = false;
 let lockUnavailable = false;
 let activeDrag: { id: number; x: number; y: number } | null = null;
 let lastPointerType = "mouse";
-function refreshLookHint() {
+function syncPointerCursor() {
   const locked = document.pointerLockElement === canvas;
   canvas.classList.toggle("mouse-locked", locked);
-  lookHint.textContent = locked
-    ? "移动鼠标转头 · Esc 释放鼠标"
-    : player.first && !lockUnavailable && lastPointerType === "mouse"
-      ? "点击街景，自由转头"
-      : "拖动转头";
 }
 function releaseLook() {
   if (document.pointerLockElement === canvas) document.exitPointerLock();
@@ -1566,12 +1623,12 @@ canvas.addEventListener("pointerdown", (event) => {
         request.catch(() => {
           lockPending = false;
           lockUnavailable = true;
-          refreshLookHint();
+          syncPointerCursor();
         });
     } catch {
       lockPending = false;
       lockUnavailable = true;
-      refreshLookHint();
+      syncPointerCursor();
     }
   }
   // Keep the initiating drag usable if pointer lock is denied by the host.
@@ -1579,18 +1636,18 @@ canvas.addEventListener("pointerdown", (event) => {
   try {
     canvas.setPointerCapture(event.pointerId);
   } catch {}
-  refreshLookHint();
+  syncPointerCursor();
 });
 document.addEventListener("pointerlockchange", () => {
   lockPending = false;
   activeDrag = null;
   keys.clear();
-  refreshLookHint();
+  syncPointerCursor();
 });
 document.addEventListener("pointerlockerror", () => {
   lockPending = false;
   lockUnavailable = true;
-  refreshLookHint();
+  syncPointerCursor();
 });
 document.addEventListener("mousemove", (event) => {
   if (player.first && document.pointerLockElement === canvas)
@@ -1616,7 +1673,7 @@ window.addEventListener("blur", releaseLook);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) releaseLook();
 });
-refreshLookHint();
+syncPointerCursor();
 
 element("#first").onclick = () => setMode(true);
 element("#third").onclick = () => setMode(false);
@@ -1628,6 +1685,95 @@ for (const el of document.querySelectorAll<HTMLButtonElement>("[data-key]")) {
   };
   el.onlostpointercapture = () => keys.delete(el.dataset.key!);
 }
+const character = characterPanel(() => {
+  releaseLook();
+  keys.clear();
+});
+const atlas = cityMap(player, () => {
+  releaseLook();
+  keys.clear();
+});
+canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+canvas.addEventListener("pointerdown", (e) => {
+  if (e.button === 2 && !atlas.open() && !character.open() && !settingsOpen()) {
+    e.preventDefault();
+    character.belt.activate();
+  }
+});
+canvas.addEventListener(
+  "wheel",
+  (e) => {
+    if (!atlas.open() && !character.open() && !settingsOpen() && e.deltaY) {
+      e.preventDefault();
+      character.belt.scroll(Math.sign(e.deltaY));
+    }
+  },
+  { passive: false },
+);
+const creations = studio(scene, player, () => {
+  releaseLook();
+  keys.clear();
+});
+const civic = civicPanel(
+  scene,
+  player,
+  () => {
+    releaseLook();
+    keys.clear();
+  },
+  async (id, x, z, yaw) => {
+    const owner = { refs: new Set<string>() };
+    try {
+      const rig = await createRig(
+        id % 20,
+        1.66,
+        "#b38d6d",
+        "#697969",
+        "#af996f",
+        owner,
+        true,
+      );
+      rig.root.position.set(x, terrainHeight(x, z), z);
+      rig.root.rotation.y = yaw;
+      animateRig(rig, "idle", 0.2);
+      actorScene.add(rig.root);
+      return () => {
+        discardRig(rig);
+        release(owner);
+      };
+    } catch (e) {
+      release(owner);
+      throw e;
+    }
+  },
+);
+const updateMap = minimap(player);
+const settingsOpen = modelSettings(() => {
+  releaseLook();
+  keys.clear();
+});
+const editGate = gateEditor(() => {
+  releaseLook();
+  keys.clear();
+});
+generationLog();
+const focus = focusMode(
+  scene,
+  camera,
+  player,
+  () => civic.interact(),
+  (edit, name) => creations.newItem(edit, name),
+  (ctx) => {
+    const gate = /^home:(\d+):gate$/.exec(ctx.target.id);
+    if (gate) void editGate(Number(gate[1]));
+    else creations.fromSelection(ctx);
+  },
+  () =>
+    !!document.querySelector("dialog[open]") ||
+    character.open() ||
+    settingsOpen() ||
+    document.hidden,
+);
 initHorizon().catch((error) => {
   console.error(error);
   setTimeout(() => initHorizon().catch(console.error), 2500);

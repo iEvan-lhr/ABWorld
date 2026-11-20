@@ -1,10 +1,10 @@
 # 北魏洛阳城漫游
 
-本工程是第一人称与第三人称漫游应用的 TypeScript 源码。街区、人物骨骼和纹理随工程保存在 `public/洛阳漫游资源/`。运行时按视距加载街区，解压由 Web Worker 完成。
+前端使用 TypeScript 和 Three.js，后端使用 Go 和 Echo。街区、人物骨骼和纹理随工程保存在 `public/洛阳漫游资源/`。运行时按视距加载街区，解压由 Web Worker 完成。
 
 ## 开发
 
-在本目录使用 Node.js 24 和 pnpm。锁文件对应 pnpm 11.1.0。
+在本目录使用 Go 1.24 或以上版本、Node.js 24 和 pnpm。锁文件对应 pnpm 11.1.0。
 
 ```sh
 pnpm install --frozen-lockfile
@@ -13,11 +13,20 @@ pnpm dev
 
 默认从 5173 开始，遇到占用就尝试下一个端口。请打开终端打印的开发地址。设置 `PORT` 环境变量可指定固定端口。修改 TypeScript 后会自动重新构建，刷新页面即可查看。
 
+## 前后端开发
+
+`pnpm dev` 启动 Echo API、内部世界计算进程与前端开发服务器，打开终端打印的「开发预览」地址。前端在 `frontend/`，Go 模块在 `backend/`。Echo 负责公开 API 路由、账号密码验证、会话、版本化存档、世界时间、住宅列表和 Go 订阅连接。`backend/world/` 中的 TypeScript 工作进程承担地图寻路、生成任务、作品登记、交易与物件授权。工作进程通过本机端口和随机内部令牌与 Echo 通信。
+
+需要独立启动时，在工程根目录的两个终端分别运行 `pnpm dev:backend` 和 `pnpm dev:frontend`。独立后端默认监听 `127.0.0.1:8787`。可使用 `ABWORLD_API_ADDR` 指定后端监听地址，使用 `ABWORLD_API_URL` 指定前端代理连接的后端地址。后端健康检查路径为 `/api/health`。修改后端代码后重启对应开发命令。
+
+长按 E 满 1.5 秒进入场景创作模式，瞄准可编辑物件后按 C 打开创作台。短按 E 与门交互。公民面板显示账号 ID，管理员可按物件 ID 与目标账号 ID 授予或撤销编辑权。
+
 ## 验证与发布
 
 ```sh
 pnpm typecheck
 pnpm test
+pnpm test:backend
 pnpm build
 ```
 
@@ -36,4 +45,31 @@ pnpm audit:collision --write
 
 第一条命令生成 `reports/collisions.json`。第二条同时更新街区的补充碰撞记录。已有基础记录保存在 `c`，补充记录保存在 `extra`，可重复生成。审计规则针对当前随附的几何资产编号，替换模型库后需核对规则。
 
-`src/main.ts` 管理渲染、街区流送、人物和输入。`src/types.ts` 定义资源与运行时类型。`src/physics/collision.ts` 管理静态通行与动态角色碰撞。`tools/build.ts` 生成离线入口和内嵌 Worker。`tests/scene.test.ts` 在实际资源包中检查宫门、南渠桥、台阶、院落物件和园池。
+`frontend/src/main.ts` 管理渲染、街区流送、人物和输入。`frontend/src/types.ts` 定义资源与运行时类型。`frontend/src/physics/collision.ts` 管理静态通行与动态角色碰撞。`tools/build.ts` 生成离线入口和内嵌 Worker。`tests/scene.test.ts` 在实际资源包中检查宫门、南渠桥、台阶、院落物件和园池。
+
+## 角色与背包
+
+按 B 或点击状态栏打开背包。奔跑消耗精力，休息时恢复。饥饿值越高代表越饿。初始道具有粟饼、茶汤和药散。登录角色保存到账号数据库，离线角色保存在当前浏览器。四项基础属性和道具数值定义在 `frontend/src/player/character.ts`。
+
+## 小地图和模型设置
+
+小地图固定北向，可缩放或收起。中央箭头随漫游视角转动。模型设置支持 OpenAI 兼容服务和 OpenCode Go 订阅，可读取模型列表并发送简短消息测试连接。密钥只保留在页面内存中。Go 对话建议在 `pnpm dev` 打印的本机地址打开，由本机开发服务转发到 Go 的固定地址。
+## 公民与住宅
+
+登录后打开「公民事务」可查看日薪、住宅、建造任务和逐笔 token 用量。账本与账号一起保存在 `.world/accounts.sqlite`。本机 Evan 账号为第 0001 号公民。日薪按北京时间零点结算，服务停机期间的日薪会在下次结算时补发。
+
+基础档每日 50 工，100 点精力对应 15,000,000 token。账本用整数 token 结算，界面按 150,000 token 一点换算。每 25 贡献升一级，每级增加 20 点每日额度。日薪在基础档上每级增加 10 工，每 5 贡献增加 1 工。需要调整时修改 `frontend/src/civic/rules.ts`。普通移动使用独立的体力值。
+
+住宅使用带院门和正房门的独立宅地。点击「回家」可开始街区导航，按 E 或使用交互按钮开关门。
+
+世界时钟由服务端返回 Unix 毫秒，客户端按单调时钟以 1:1 的速率推进，每分钟同步一次，按北京时间显示。公民日薪、交易和任务用量由服务端结算。
+
+「我的作品」按玩家输入的长、宽、高设计物品，可指定摆放点或授权模型按已保存的住宅布局选位。创作和修缮通过 OpenCode Go 的 `deepseek-v4.1-flash` 完成。本机 Evan 账号可使用本地 OpenCode 中已保存的 Go 凭据。模型数据支持组合构件和自定义三角网格。
+
+## 本地持久化
+
+账号、公民与门状态、作品蓝图、权益登记、摆放、库存和销售记录保存在 `.world/accounts.sqlite`。早期街区物件在 `.world/objects.sqlite`。SQLite 事务保证独一件登记和买卖结算的一致性。作品可在「我的作品」导出成带版本的 JSON。备份世界时请停止开发服务并复制 `.world` 中的 SQLite 文件。作品的作者、归属、摆放点、模型指纹和规范化蓝图可作为后续 PostgreSQL 迁移的数据基础。
+
+## 源码许可
+
+项目自有代码采用 AGPL-3.0-only。授权范围见 NOTICE.md。登录页及公民面板提供当前构建对应的源码包。使用源码包构建时，将同版本游戏附带的「洛阳漫游资源」目录放到 `public` 下，然后执行 `pnpm install --frozen-lockfile` 与 `pnpm build`。

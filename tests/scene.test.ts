@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
-import { resolveSupport } from "../src/physics/collision.ts";
+import { resolveSupport } from "../frontend/src/physics/collision.ts";
 const base = new URL("../public/洛阳漫游资源/tiles/", import.meta.url);
 const report = JSON.parse(
   readFileSync(new URL("../reports/collisions.json", import.meta.url), "utf8"),
