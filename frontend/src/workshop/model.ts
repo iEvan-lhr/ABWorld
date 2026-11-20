@@ -1,4 +1,4 @@
-import {goBaseURL} from '../go-provider.ts';
+import { goBaseURL } from "../go-provider.ts";
 import { instructions, parseBlueprint } from "./blueprint.ts";
 export interface Connection {
   url: string;
@@ -38,16 +38,14 @@ async function request(
     c.go &&
     !goCatalog &&
     typeof location !== "undefined" &&
-    ["127.0.0.1", "localhost", "[::1]"].includes(location.hostname) &&
+    (location.protocol === "https:" ||
+      ["127.0.0.1", "localhost", "[::1]"].includes(location.hostname)) &&
     /^https?:$/.test(location.protocol);
   const url = goCatalog
-    ? goBaseURL+"/models"
+    ? goBaseURL + "/models"
     : localRelay
       ? "/api/model/go/chat"
-      : endpoint(
-          c.go ? goBaseURL : c.url,
-          path,
-        );
+      : endpoint(c.go ? goBaseURL : c.url, path);
   let r: Response;
   try {
     r = await fetch(url, {

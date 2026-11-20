@@ -1,3 +1,4 @@
+import { assemble, normalizeSizes } from "../../frontend/src/civic/assembly.ts";
 import { goGeneration } from "./go-generation.ts";
 import { placementRights } from "./placement-rights.ts";
 import {
@@ -119,6 +120,17 @@ export function creationStore(
       req: IncomingMessage,
     ) {
       if (req.method === "GET") {
+        if (route.startsWith("history")) {
+          const u = new URL(req.url ?? "/", "http://localhost");
+          const before = Number(
+            u.searchParams.get("before") ?? Number.MAX_SAFE_INTEGER,
+          );
+          const list = history.page(
+            uid,
+            Number.isSafeInteger(before) ? before : Number.MAX_SAFE_INTEGER,
+          );
+          return { entries: list.slice(0, 30), more: list.length > 30 };
+        }
         if (route === "regions")
           return {
             home: rights.home(uid),
@@ -160,189 +172,303 @@ export function creationStore(
           rights.revoke(uid, b.id);
           return { ok: true };
         });
-      if (route === "design") {
-        const quick = b.flow === "new";
-        if (quick) {
-          if (!Object.hasOwn(creationTypes, b.category) || b.context)
-            throw Error("新建物品需要有效的类型");
-          b.mode = b.mode ?? "batch";
-        }
-        const context = b.context;
-        if (context) {
-          if (
-            typeof context.target?.id !== "string" ||
-            !Array.isArray(context.nearby) ||
-            context.nearby.length > 8
-          )
-            throw Error("场景上下文无效");
-          requireEdit(uid, context.target.id);
-        }
-        const size: Vec = [b.length, b.height, b.width];
+      if (route === "combine") {
         if (
-          (!quick &&
-            !size.every(
-              (n) =>
-                typeof n === "number" &&
-                Number.isFinite(n) &&
-                n >= 0.03 &&
-                n <= 4,
-            )) ||
-          typeof b.prompt !== "string" ||
-          !b.prompt.trim() ||
-          b.prompt.length > 1200 ||
-          !["unique", "batch"].includes(b.mode)
+          !Array.isArray(b.ids) ||
+          b.ids.length < 2 ||
+          b.ids.length > 8 ||
+          !b.ids.every(Number.isSafeInteger) ||
+          new Set(b.ids).size !== b.ids.length
         )
-          throw Error("请填写描述、长宽高和登记方式");
-        const occupied = db
-          .prepare(
-            "SELECT anchor,blueprint FROM creations WHERE state='已摆放' AND home=?",
-          )
-          .all(s.home.id);
-        const options = (Object.keys(anchors) as Anchor[]).filter((k) => {
-          const a = anchors[k];
-          return (
-            (b.anchor === "auto" || b.anchor === k) &&
-            !occupied.some((p) => p.anchor === k) &&
-            size[0] <= a.w &&
-            size[2] <= a.d &&
-            size[1] <= a.h
-          );
-        });
-        if (!quick && !options.length) throw Error("所选位置已占用或尺寸过大");
-        const key =
-          req.headers.authorization?.match(/^Bearer (.+)$/)?.[1] ??
-          (localOwner(
-            req,
-            db.prepare("SELECT name FROM users WHERE id=?").get(uid)?.name,
-          )
-            ? subscriptionKey()
-            : "");
-        if (!key) throw Error("请在模型设置中连接自己的 Go 订阅");
-        const day = dayNumber();
-        transaction(() => {
-          if (
-            allowance(s.merit) - s.spent < taskBudget ||
-            db.prepare("SELECT uid FROM civic_jobs WHERE uid=?").get(uid)
-          )
-            throw Error("精力不足或有未结算任务");
-          db.prepare(
-            "INSERT INTO civic_jobs VALUES(?,'design',?,'running')",
-          ).run(uid, day);
-        });
-        const trace: Trace = { stage: "请求模型", status: "失败" };
-        let tokens: number | null = null,
-          dispatched = false;
+          throw Error("请选择 2 至 8 件不同的作品");
+        const name = String(b.name || "组合物品")
+          .trim()
+          .slice(0, 64);
+        const logId = history.begin(
+          uid,
+          "组合物品",
+          name,
+          "custom",
+          b.mode === "unique" ? "unique" : "batch",
+        );
         try {
-          dispatched = true;
-          const r = await goGeneration(key, allowance(s.merit) - s.spent, {
-            reasoning_effort: "low",
-            response_format: { type: "json_object" },
-            messages: [
-              {
-                role: "system",
-                content:
-                  instructions +
-                  (quick
-                    ? " 按上述示例直接返回蓝图对象（version、catalogVersion、name、seed、parts），合理选择实际尺寸，底部中心位于原点。"
-                    : " Return JSON {anchor,blueprint}. Fit the requested dimensions. Select only an available anchor. Keep the central doorway and courtyard path free."),
-              },
-              {
-                role: "user",
-                content: JSON.stringify(
-                  quick
-                    ? {
-                        category:
-                          creationTypes[
-                            b.category as keyof typeof creationTypes
-                          ],
-                        description: b.prompt,
-                      }
-                    : {
-                        sceneContext: context,
-                        description: b.prompt,
-                        dimensions: {
-                          length: b.length,
-                          width: b.width,
-                          height: b.height,
-                        },
-                        house: {
-                          hall: [8.4, 5, 2.8],
-                          courtyard: [14, 17.2],
-                          porch: s.home.roof,
-                          furnishings: s.home.yard,
-                          door: "middle of south wall",
-                          anchors,
-                          occupied: occupied.map((o) => ({
-                            anchor: o.anchor,
-                            name: JSON.parse(String(o.blueprint)).name,
-                          })),
-                          available: options,
-                        },
-                      },
-                ),
-              },
-            ],
-          });
-          trace.http = r.status;
-          if (!r.ok) {
-            if (r.status < 500) dispatched = false;
-            throw Error(`Go 服务返回 HTTP ${r.status}`);
-          }
-          trace.stage = "读取响应";
-          const data = await jsonResponse(r);
-          tokens = usage({
-            total: data.usage?.total_tokens,
-            input: data.usage?.prompt_tokens,
-            output: data.usage?.completion_tokens,
-          });
-          trace.tokens = tokens;
-          trace.stage = "校验设计";
-          const result = generated(data, trace),
-            anchor = quick
-              ? null
-              : b.anchor === "auto"
-                ? result.anchor
-                : b.anchor;
-          if (!quick && !options.includes(anchor))
-            throw Error("AI 选择的位置不符合摆放约束");
-          const parsed = parseBlueprint(
-            quick ? (result.blueprint ?? result) : result.blueprint,
-          );
-          const bp = quick ? parsed : fitDimensions(parsed, size);
           return transaction(() => {
-            if (context) requireEdit(uid, context.target.id);
-            const id = add(uid, s.home.id, anchor, b.mode, bp);
-            if (quick)
-              db.prepare("UPDATE creations SET category=? WHERE id=?").run(
-                b.category,
-                id,
+            const selected = b.ids.map((id: number) =>
+              db
+                .prepare("SELECT * FROM creations WHERE id=? AND uid=?")
+                .get(id, uid),
+            );
+            if (selected.some((p: any) => !p || p.state === "已组合"))
+              throw Error("请选择自己拥有的可组合物品");
+            const singles = selected.filter((p: any) => p.mode === "unique");
+            if (
+              singles.some((p: any) => p.state !== "草案") ||
+              (singles.length && b.consumeUnique !== true)
+            )
+              throw Error("独一件需要以未摆放的原件并入组合");
+            const bp = assemble(
+              selected.map((p: any) => parseBlueprint(JSON.parse(p.blueprint))),
+              b.arrangement,
+              name,
+            );
+            const mode =
+              singles.length || b.mode === "unique" ? "unique" : "batch";
+            const id = add(uid, s.home.id, null, mode, bp);
+            for (const p of singles)
+              db.prepare("UPDATE creations SET state='已组合' WHERE id=?").run(
+                p.id,
               );
-            if (context)
-              db.prepare("UPDATE creations SET scene_context=? WHERE id=?").run(
-                JSON.stringify(context),
-                id,
-              );
-            trace.status = "成功";
-            trace.stage = "已保存";
-            return { id, tokens };
+            db.prepare("UPDATE creations SET category=? WHERE id=?").run(
+              "custom",
+              id,
+            );
+            history.write(uid, "组合物品", {
+              logId,
+              product: id,
+              status: "成功",
+              stage: "已保存",
+              tokens: 0,
+            });
+            return { id };
           });
-        } catch (error) {
-          trace.message = (error as Error).message.slice(0, 160);
-          throw error;
-        } finally {
+        } catch (e) {
+          history.failPending(uid, logId, e);
+          throw e;
+        }
+      }
+      if (route === "design") {
+        const logId = history.begin(
+          uid,
+          "物品设计",
+          typeof b.prompt === "string" ? b.prompt.slice(0, 1200) : "",
+          String(b.category ?? "custom").slice(0, 20),
+          b.mode === "unique" ? "unique" : "batch",
+        );
+        try {
+          const quick = b.flow === "new";
+          if (quick) {
+            if (
+              (b.category !== "auto" &&
+                !Object.hasOwn(creationTypes, b.category)) ||
+              b.context
+            )
+              throw Error("新建物品需要有效的类型");
+            b.mode = b.mode ?? "batch";
+          }
+          const context = b.context;
+          if (context) {
+            if (
+              typeof context.target?.id !== "string" ||
+              !Array.isArray(context.nearby) ||
+              context.nearby.length > 8
+            )
+              throw Error("场景上下文无效");
+            requireEdit(uid, context.target.id);
+          }
+          const size: Vec = [b.length, b.height, b.width];
+          if (
+            (!quick &&
+              !size.every(
+                (n) =>
+                  typeof n === "number" &&
+                  Number.isFinite(n) &&
+                  n >= 0.03 &&
+                  n <= 4,
+              )) ||
+            typeof b.prompt !== "string" ||
+            !b.prompt.trim() ||
+            b.prompt.length > 1200 ||
+            !["unique", "batch"].includes(b.mode)
+          )
+            throw Error("请填写描述、长宽高和登记方式");
+          const occupied = db
+            .prepare(
+              "SELECT anchor,blueprint FROM creations WHERE state='已摆放' AND home=?",
+            )
+            .all(s.home.id);
+          const options = (Object.keys(anchors) as Anchor[]).filter((k) => {
+            const a = anchors[k];
+            return (
+              (b.anchor === "auto" || b.anchor === k) &&
+              !occupied.some((p) => p.anchor === k) &&
+              size[0] <= a.w &&
+              size[2] <= a.d &&
+              size[1] <= a.h
+            );
+          });
+          if (!quick && !options.length)
+            throw Error("所选位置已占用或尺寸过大");
+          const key =
+            req.headers.authorization?.match(/^Bearer (.+)$/)?.[1] ??
+            (localOwner(
+              req,
+              db.prepare("SELECT name FROM users WHERE id=?").get(uid)?.name,
+            )
+              ? subscriptionKey()
+              : "");
+          if (!key) throw Error("请在模型设置中连接自己的 Go 订阅");
+          const day = dayNumber();
           transaction(() => {
-            history.write(uid, "物品设计", trace);
-            if (tokens !== null)
-              db.prepare(
-                "INSERT INTO civic_log(uid,day,event,amount,tokens) VALUES(?,?,'物品设计',0,?)",
-              ).run(uid, day, tokens);
-            if (tokens !== null || !dispatched)
-              db.prepare("DELETE FROM civic_jobs WHERE uid=?").run(uid);
-            else
-              db.prepare(
-                "UPDATE civic_jobs SET status='unmetered' WHERE uid=?",
-              ).run(uid);
+            if (
+              allowance(s.merit) - s.spent < taskBudget ||
+              db.prepare("SELECT uid FROM civic_jobs WHERE uid=?").get(uid)
+            )
+              throw Error("精力不足或有未结算任务");
+            db.prepare(
+              "INSERT INTO civic_jobs VALUES(?,'design',?,'running')",
+            ).run(uid, day);
           });
+          const trace: Trace = { logId, stage: "请求模型", status: "失败" };
+          let tokens: number | null = null,
+            dispatched = false;
+          try {
+            dispatched = true;
+            const prior = quick
+              ? db
+                  .prepare(
+                    "SELECT prompt,product FROM generation_log WHERE uid=? AND id<? AND kind='物品设计' AND status='成功' AND prompt IS NOT NULL ORDER BY id DESC LIMIT 3",
+                  )
+                  .all(uid, logId)
+              : [];
+            const previous =
+              quick && prior[0]?.product
+                ? db
+                    .prepare(
+                      "SELECT blueprint FROM creations WHERE id=? AND uid=?",
+                    )
+                    .get(prior[0].product, uid)
+                : undefined;
+            const r = await goGeneration(key, allowance(s.merit) - s.spent, {
+              reasoning_effort: "low",
+              response_format: { type: "json_object" },
+              messages: [
+                {
+                  role: "system",
+                  content:
+                    instructions +
+                    (quick
+                      ? " 按上述示例直接返回蓝图对象（version、catalogVersion、name、seed、parts），合理选择实际尺寸，底部中心位于原点。蓝图根字段 category 必须由你从 furniture、vessel、decoration、tool、custom 中判断并填写。返回一句简短中文 reply 描述这次设计的样式或变化。size 必须是三个正数，顺序宽、高、深，使用米。"
+                      : " Return JSON {anchor,blueprint}. Fit the requested dimensions. Select only an available anchor. Keep the central doorway and courtyard path free."),
+                },
+                {
+                  role: "user",
+                  content: JSON.stringify(
+                    quick
+                      ? {
+                          category:
+                            creationTypes[
+                              b.category as keyof typeof creationTypes
+                            ],
+                          earlierRequests: prior.map((p) => p.prompt).reverse(),
+                          previousDesign: previous
+                            ? String(previous.blueprint).slice(0, 12000)
+                            : undefined,
+                          description: b.prompt,
+                        }
+                      : {
+                          sceneContext: context,
+                          description: b.prompt,
+                          dimensions: {
+                            length: b.length,
+                            width: b.width,
+                            height: b.height,
+                          },
+                          house: {
+                            hall: [8.4, 5, 2.8],
+                            courtyard: [14, 17.2],
+                            porch: s.home.roof,
+                            furnishings: s.home.yard,
+                            door: "middle of south wall",
+                            anchors,
+                            occupied: occupied.map((o) => ({
+                              anchor: o.anchor,
+                              name: JSON.parse(String(o.blueprint)).name,
+                            })),
+                            available: options,
+                          },
+                        },
+                  ),
+                },
+              ],
+            });
+            trace.http = r.status;
+            if (!r.ok) {
+              if (r.status < 500) dispatched = false;
+              throw Error(`Go 服务返回 HTTP ${r.status}`);
+            }
+            trace.stage = "读取响应";
+            const data = await jsonResponse(r);
+            tokens = usage({
+              total: data.usage?.total_tokens,
+              input: data.usage?.prompt_tokens,
+              output: data.usage?.completion_tokens,
+            });
+            trace.tokens = tokens;
+            trace.stage = "校验设计";
+            const result = generated(data, trace),
+              anchor = quick
+                ? null
+                : b.anchor === "auto"
+                  ? result.anchor
+                  : b.anchor;
+            if (!quick && !options.includes(anchor))
+              throw Error("AI 选择的位置不符合摆放约束");
+            const parsed = parseBlueprint(
+              normalizeSizes(
+                quick ? (result.blueprint ?? result) : result.blueprint,
+              ),
+              32,
+            );
+            const bp = quick ? parsed : fitDimensions(parsed, size);
+            return transaction(() => {
+              if (context) requireEdit(uid, context.target.id);
+              const id = add(uid, s.home.id, anchor, b.mode, bp);
+              trace.product = id;
+              if (quick && typeof result.reply === "string")
+                trace.message = result.reply.slice(0, 300);
+              trace.category =
+                b.category === "auto"
+                  ? Object.hasOwn(
+                      creationTypes,
+                      result.category ?? result.blueprint?.category,
+                    )
+                    ? (result.category ?? result.blueprint.category)
+                    : "custom"
+                  : b.category;
+              if (quick)
+                db.prepare("UPDATE creations SET category=? WHERE id=?").run(
+                  trace.category ?? "custom",
+                  id,
+                );
+              if (context)
+                db.prepare(
+                  "UPDATE creations SET scene_context=? WHERE id=?",
+                ).run(JSON.stringify(context), id);
+              trace.status = "成功";
+              trace.stage = "已保存";
+              return { id, tokens };
+            });
+          } catch (error) {
+            trace.message = (error as Error).message.slice(0, 160);
+            throw error;
+          } finally {
+            transaction(() => {
+              history.write(uid, "物品设计", trace);
+              if (tokens !== null)
+                db.prepare(
+                  "INSERT INTO civic_log(uid,day,event,amount,tokens) VALUES(?,?,'物品设计',0,?)",
+                ).run(uid, day, tokens);
+              if (tokens !== null || !dispatched)
+                db.prepare("DELETE FROM civic_jobs WHERE uid=?").run(uid);
+              else
+                db.prepare(
+                  "UPDATE civic_jobs SET status='unmetered' WHERE uid=?",
+                ).run(uid);
+            });
+          }
+        } catch (e) {
+          history.failPending(uid, logId, e);
+          throw e;
         }
       }
       return transaction(() => {

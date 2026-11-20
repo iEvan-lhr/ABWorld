@@ -11,12 +11,22 @@ export async function sourceArchive(root: string) {
       else if (e.isFile()) archive[f] = await readFile(path.join(root, f));
     }
   }
-  for (const folder of ["frontend", "backend", "tools", "tests", "docs"])
+  for (const folder of [
+    "frontend",
+    "backend",
+    "tools",
+    "tests",
+    "docs",
+    "deploy",
+  ])
     await include(folder);
   for (const file of [
     "LICENSE",
     "NOTICE.md",
     "README.md",
+    "compose.yaml",
+    "compose.https.yaml",
+    ".dockerignore",
     "package.json",
     "pnpm-lock.yaml",
     "pnpm-workspace.yaml",

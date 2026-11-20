@@ -1,3 +1,4 @@
+import { conversation } from "./conversation.ts";
 import { placementUI } from "./placement-ui.ts";
 import { responseJSON } from "./gate-editor.ts";
 import { designView } from "./design-view.ts";
@@ -339,68 +340,12 @@ export function studio(
     await refresh();
     await loadWorld();
   });
-  const quick = $("quickCreate") as HTMLDialogElement,
-    turn = $("turntable"),
-    originalParent = turn.parentElement!;
-  let quickBusy = false,
-    latest: Product | undefined;
-  function launchNew(edit?: () => void, name?: string) {
+  const quick = $("quickCreate") as HTMLDialogElement;
+  const launchNew = conversation(api, view.preview, placement, () => {
     release();
     if (dlg.open) dlg.close();
-    const btn = $("quickEdit") as HTMLButtonElement;
-    btn.hidden = !edit;
-    btn.textContent = `修改${name ?? "选中物件"}`;
-    btn.onclick = () => {
-      quick.close();
-      edit?.();
-    };
-    quick.showModal();
-    if (latest) {
-      $("quickPreview").append(turn);
-      view.preview(latest.blueprint);
-    }
-    field("quickPrompt").focus();
-  }
-  quick.addEventListener("close", () => {
-    originalParent.insertBefore(turn, $("myWorks").previousElementSibling);
   });
-  $("quickClose").onclick = () => quick.close();
   $("quickOpen").onclick = () => launchNew();
-  $("quickPlace").onclick = () => {
-    if (latest)
-      void placement(latest).catch(
-        (e) => ($("quickNote").textContent = e.message),
-      );
-  };
-  ($("quickForm") as HTMLFormElement).onsubmit = async (e) => {
-    e.preventDefault();
-    if (quickBusy) return;
-    quickBusy = true;
-    const submit = $("quickSubmit") as HTMLButtonElement;
-    submit.disabled = true;
-    $("quickNote").textContent = "DeepSeek 正在设计…";
-    try {
-      const result = await api("design", {
-        flow: "new",
-        category: field("quickType").value,
-        prompt: field("quickPrompt").value.trim(),
-      });
-      const saved = await api("mine");
-      latest = saved.mine.find((p: Product) => p.id === result.id);
-      if (!latest) throw Error("未读取到已保存的作品");
-      if (quick.open) {
-        $("quickPreview").append(turn);
-        view.preview(latest.blueprint);
-      }
-      $("quickNote").textContent =
-        `已保存「${latest.blueprint.name}」 · ${result.tokens} token`;
-      $("quickPlace").hidden = false;
-    } catch (err) {
-      $("quickNote").textContent = (err as Error).message;
-    } finally {
-      submit.disabled = quickBusy = false;
-    }
-  };
   return {
     newItem: launchNew,
     fromSelection: show,

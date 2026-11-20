@@ -1,0 +1,8 @@
+.git
+.world
+.dev
+dist
+node_modules
+.acme
+.env*
+*.exe

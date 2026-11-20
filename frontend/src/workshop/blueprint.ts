@@ -71,7 +71,7 @@ export const example: Blueprint = {
     },
   ],
 };
-export const instructions = `你是洛阳城的建模师。根据用户描述设计物件，只输出一个 JSON 对象。构件 ${JSON.stringify(catalog)}。材料 ${Object.keys(colors).join(", ")}。单位米，size 为宽高深，每轴 0.03 至 10。position 为底部中心[x,y,z]，地面 y=0；挂接用 attachTo:"先前构件ID.top" 和 offset，替代 position。每个部件使用唯一 ASCII ID。最多32件，全部位于原点水平半径各6米内、高10米内。version和catalogVersion必须是1，seed为非负整数。示例 ${JSON.stringify(example)}。不要输出代码或外部资源。`;
+export const instructions = `你是洛阳城的建模师。根据用户描述设计物件，只输出一个 JSON 对象。构件 ${JSON.stringify(catalog)}。材料 ${Object.keys(colors).join(", ")}。单位米，size 为宽高深，每轴 0.001 至 10。position 为底部中心[x,y,z]，地面 y=0；挂接用 attachTo:"先前构件ID.top" 和 offset，替代 position。每个部件使用唯一 ASCII ID。最多32件，全部位于原点水平半径各6米内、高10米内。version和catalogVersion必须是1，seed为非负整数。示例 ${JSON.stringify(example)}。不要输出代码或外部资源。`;
 function fail(message: string): never {
   throw new Error(message);
 }
@@ -116,7 +116,7 @@ export function layout(bp: Blueprint) {
     return { ...p, at };
   });
 }
-export function parseBlueprint(value: unknown): Blueprint {
+export function parseBlueprint(value: unknown, maxParts = 256): Blueprint {
   const b = record(value);
   if (b.version !== 1 || b.catalogVersion !== 1)
     fail("需要蓝图版本 1 和构件目录版本 1");
@@ -124,8 +124,8 @@ export function parseBlueprint(value: unknown): Blueprint {
     fail("名称需为 1–64 个字符");
   if (typeof b.seed !== "number" || !Number.isSafeInteger(b.seed) || b.seed < 0)
     fail("seed 需要非负整数");
-  if (!Array.isArray(b.parts) || !b.parts.length || b.parts.length > 32)
-    fail("需要 1–32 个构件");
+  if (!Array.isArray(b.parts) || !b.parts.length || b.parts.length > maxParts)
+    fail(`需要 1–${maxParts} 个构件`);
   const ids = new Set<string>();
   const parts = b.parts.map((v, i): Part => {
     const p = record(v),
@@ -142,7 +142,12 @@ export function parseBlueprint(value: unknown): Blueprint {
     const out: Part = {
       id: p.id,
       type: p.type as Kind,
-      size: vector(p.size, 0.03, 10, label + "尺寸"),
+      size: vector(
+        p.size,
+        0.001,
+        10,
+        `${label} ${p.id} 的尺寸 [宽, 高, 深]（米）`,
+      ),
     };
     if (out.type === "mesh") {
       const mesh = record(p.mesh);

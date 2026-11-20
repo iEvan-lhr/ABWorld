@@ -1,0 +1,7 @@
+services:
+  web:
+    ports:
+      - "443:443"
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - ./deploy/https.conf:/etc/nginx/conf.d/abworld-https.conf:ro
